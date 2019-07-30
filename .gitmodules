@@ -1,0 +1,3 @@
+[submodule "modules/GameImplementation"]
+	path = modules/GameImplementation
+	url = https://github.com/advancedailab/GameImplementation.git
