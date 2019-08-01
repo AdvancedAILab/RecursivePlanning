@@ -1,3 +1,7 @@
+from collections.abc import Iterable
+
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +17,9 @@ class Conv(nn.Module):
 
     def forward(self, x):
         h = self.conv(x)
-        return h if self.bn is None else self.bn(h)
+        if self.bn is not None:
+            h = self.bn(h)
+        return h
 
 class WideResidual(nn.Module):
     def __init__(self, filters, kernel_size, bn):
@@ -23,3 +29,14 @@ class WideResidual(nn.Module):
 
     def forward(self, h):
         return F.relu(h + self.conv2(F.relu(self.conv1(h))))
+
+class BaseNet(nn.Module):
+    def predict(self, *args):
+        self.eval()
+        with torch.no_grad():
+            torch_args = [torch.FloatTensor(np.array(x)).unsqueeze(0) for x in args]
+            outputs = self.forward(*torch_args)
+        if isinstance(outputs, list) or isinstance(outputs, tuple):
+            return tuple([o.cpu().numpy()[0] for o in outputs])
+        else:
+            return outputs.cpu().numpy()[0]
