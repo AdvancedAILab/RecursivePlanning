@@ -13,7 +13,7 @@ class Encoder(BaseNet):
         self.board_size = input_shape[1] * input_shape[2]
 
         self.conv = Conv(input_shape[0], 16, 3, bn=True)
-        self.blocks = nn.ModuleList([WideResidual(16, 3, bn=True) for _ in range(2)])
+        self.blocks = nn.ModuleList([WideResidual(16, 3, bn=True) for _ in range(4)])
 
     def forward(self, x):
         h = F.relu(self.conv(x))
@@ -46,12 +46,3 @@ class Decoder(BaseNet):
         h_v = self.fc_v(h_v.view(-1, self.board_size * 1))
 
         return F.softmax(h_p, dim=-1), torch.tanh(h_v)
-
-class PVNet(BaseNet):
-    def __init__(self, env):
-        super().__init__()
-        self.encoder = Encoder(env)
-        self.decoder = Decoder(env)
-
-    def forward(self, x):
-        return self.decoder(self.encoder(x))
