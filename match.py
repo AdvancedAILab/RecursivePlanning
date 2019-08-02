@@ -14,7 +14,7 @@ class Agent(RandomAgent):
         self.model = model
 
     def action(self, state):
-        o = self.model.predict(state.feature())
+        o = self.model.predict(state)
         p = o['policy']
         ap_list = sorted([(a, p[a]) for a in state.legal_actions()], key=lambda x:-x[1])
         return ap_list[0][0]
