@@ -31,7 +31,7 @@ class WideResidual(nn.Module):
         return F.relu(h + self.conv2(F.relu(self.conv1(h))))
 
 class BaseNet(nn.Module):
-    def predict(self, *args):
+    def inference(self, *args):
         self.eval()
         with torch.no_grad():
             torch_args = [torch.FloatTensor(np.array(x)).unsqueeze(0) for x in args]

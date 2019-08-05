@@ -2,6 +2,7 @@
 # Monte Carlo Tree Search by Monte Carlo Tree Search
 
 import time
+import multiprocessing as mp
 import numpy as np
 import torch
 import torch.nn as nn
@@ -28,7 +29,7 @@ class Book:
     def __init__(self, nodes):
         self.node = nodes
 
-    def predict(self, state):
+    def inference(self, state):
         key = str(state)
         if key in self.node:
             p, v = self.node[key].p, self.node[key].v
@@ -47,9 +48,9 @@ class BookNets:
         self.book = book
         self.nets = nets
 
-    def predict(self, state):
-        o_book = self.book.predict(state)
-        o_nets = self.nets.predict(state)
+    def inference(self, state):
+        o_book = self.book.inference(state)
+        o_nets = self.nets.inference(state)
         # ratio; sqrt(n) : k
         sqn, k = self.book.size(state), 8
         p = (o_book['policy'] * sqn + o_nets['policy'] * k) / (sqn + k)
@@ -141,17 +142,15 @@ class Trainer(BaseTrainer):
 
         episodes = []
         while len(conns) > 0:
-            for i, conn in enumerate(conns):
-                # check if there is a new returned data
-                if not conn.poll():
-                    continue
+            conn_list = mp.connection.wait(conns)
+            for conn in conn_list:
                 _, path, episode = conn.recv()
                 episodes.append(episode)
                 self.feed_episode(path, episode)
                 if conn.recv():
                     conn.send(self.next_path())
                 else:
-                    conns.pop(i)
+                    conns.remove(conn)
 
         return episodes
 
@@ -160,7 +159,6 @@ class Trainer(BaseTrainer):
         if process == 1:
             episodes = self.generation_process_solo((nets, None, g, steps, 0, 1))
         else:
-            import multiprocessing as mp
             # make connection between server and worker
             server_conns = []
             for i in range(process):
