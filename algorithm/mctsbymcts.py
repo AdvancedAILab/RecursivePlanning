@@ -28,25 +28,34 @@ class Book:
     def __init__(self, nodes):
         self.node = nodes
 
-    def predict(self, key):
+    def predict(self, state):
         key = str(state)
+        if key in self.node:
+            p, v = self.node[key].p, self.node[key].v
+        else:
+            al = state.action_length()
+            p, v = np.ones((al)) / al, 0
+
+        return {'policy': p, 'value': v}
 
     def size(self, state):
         key = str(state)
         return self.node[key].n_all if key in self.node else 0
 
 class BookNets:
-    def __init__(self, nets, book):
-        self.nets = nets
+    def __init__(self, book, nets):
         self.book = book
+        self.nets = nets
 
     def predict(self, state):
-        o_nets = self.nets.predict(x)
-        o_book = self.book.predict(x)
-        # ratio : sqrt(n) : k
-        sqn, k = self.book.size(x), 8
-        p = (o_nets['policy'] * sqn + o_book['policy'] * k) / (sqn + k)
-        v = (o_nets['policy'] * sqn + o_book['policy'] * k) / (sqn + k)
+        o_book = self.book.predict(state)
+        o_nets = self.nets.predict(state)
+        # ratio; sqrt(n) : k
+        sqn, k = self.book.size(state), 8
+        p = (o_book['policy'] * sqn + o_nets['policy'] * k) / (sqn + k)
+        v = (o_book['value']  * sqn + o_nets['value']  * k) / (sqn + k)
+
+        return {'policy': p, 'value': v}
 
 class Trainer(BaseTrainer):
     def __init__(self, env, args):
@@ -166,4 +175,6 @@ class Trainer(BaseTrainer):
         return episodes
 
     def notime_planner(self, nets):
-
+        book = Book(self.tree)
+        booknets = BookNets(book, nets)
+        return booknets
