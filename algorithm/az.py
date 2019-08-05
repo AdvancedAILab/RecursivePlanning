@@ -15,7 +15,7 @@ from .board2d import Encoder, Decoder
 # encoder   ... (domain dependent) feature -> dependent
 # decoder   ... (domain dependent) encoded -> p, v
 
-vloss = 4
+vloss = 10
 
 class Nets(dict):
     def __init__(self, env):
@@ -29,10 +29,10 @@ class Nets(dict):
         p, v = self['decoder'](encoded)
         return {'policy': p, 'value': v}
 
-    def predict(self, state):
+    def inference(self, state):
         x = state.feature()
-        encoded = self['encoder'].predict(x)
-        p, v = self['decoder'].predict(encoded)
+        encoded = self['encoder'].inference(x)
+        p, v = self['decoder'].inference(encoded)
         return {'policy': p, 'value': v}
 
 class Node:
@@ -93,7 +93,7 @@ class Planner:
                 self.bonus += 0.5
                 outputs = self.store[key]
             else:
-                outputs = self.nets.predict(state)
+                outputs = self.nets.inference(state)
                 self.store[key] = outputs
             node = self.node[key] = Node(state, outputs)
             return node.v
@@ -107,7 +107,7 @@ class Planner:
 
         return q_new
 
-    def predict(self, state, num_simulations, temperature=0, show=False):
+    def inference(self, state, num_simulations, temperature=0, show=False):
         if show:
             print(state)
         start, prev_time = time.time(), 0
@@ -151,7 +151,7 @@ class Trainer:
         planner = Planner(nets)
         temperature = 0.7
         while not state.terminal():
-            outputs = planner.predict(state, self.args['num_simulations'], temperature)
+            outputs = planner.inference(state, self.args['num_simulations'], temperature)
             policy = outputs['policy']
             if len(record) < len(guide):
                 action = guide[len(record)]
@@ -228,7 +228,7 @@ class Trainer:
 
     def run(self, callback=None):
         nets = Nets(self.env)
-        print(nets.predict(self.env.State()))
+        print(nets.inference(self.env.State()))
         if callback is not None:
             callback(self.env, nets)
 
@@ -241,7 +241,7 @@ class Trainer:
                 self.reward_distribution[reward] += 1
             self.episodes.extend(episodes)
 
-            print(self.reward_distribution)
+            print('gen = ', dict(sorted(self.reward_distribution.items(), reverse=True)))
             nets = self.train()
             if callback is not None:
                 callback(self.env, self.notime_planner(nets))
