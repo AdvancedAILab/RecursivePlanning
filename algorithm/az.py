@@ -39,8 +39,7 @@ class Node:
     def __init__(self, state, outputs):
         self.p, self.v = outputs['policy'], outputs['value']
         self.q_sum, self.n = np.zeros_like(self.p), np.zeros_like(self.p)
-        self.n_all = 1
-        self.q_sum_all = self.v / 2
+        self.q_sum_all, self.n_all = 0, 0
         self.action_mask = np.ones_like(self.p) * 1e32
         for a in state.legal_actions():
             self.action_mask[a] = 0
@@ -64,8 +63,9 @@ class Node:
             p = 0.75 * p + 0.25 * np.random.dirichlet([0.1] * len(p))
 
         # pucb
-        q = (self.q_sum_all / self.n_all + self.q_sum) / (1 + self.n)
-        ucb = q + 2.0 * np.sqrt(self.n_all) * p / (self.n + 1) - self.action_mask
+        q_sum_all, n_all = self.q_sum_all + self.v / 2, self.n_all + 1
+        q = (q_sum_all / n_all + self.q_sum) / (1 + self.n)
+        ucb = q + 2.0 * np.sqrt(n_all) * p / (self.n + 1) - self.action_mask
         action = np.argmax(ucb)
 
         # virtual loss
@@ -138,12 +138,18 @@ class Planner:
             'value': root.q_sum_all / root.n_all
         } 
 
-class Trainer:
+class Generator:
     def __init__(self, env, args):
         self.env = env
         self.args = args
-        self.episodes = []
-        self.reward_distribution = {}
+
+    def run(self, args):
+        nets, _, st, n, process_id, num_process = args
+        episodes = []
+        for g in range(st + process_id, st + n, num_process):
+            print(g, '', end='', flush=True)
+            episodes.append(self.generation(nets))
+        return episodes
 
     def generation(self, nets, guide=[]):
         record, ps, vs = [], [], []
@@ -165,34 +171,26 @@ class Trainer:
         reward = state.reward(subjective=False)
         return record, reward, ps, vs
 
-    def generation_process(self, args):
-        nets, _, st, n, process_id, num_process = args
-        episodes = []
-        for g in range(st + process_id, st + n, num_process):
-            print(g, '', end='', flush=True)
-            episodes.append(self.generation(nets))
-        return episodes
+class Trainer:
+    def __init__(self, env, args):
+        self.env = env
+        self.args = args
+        self.episodes = []
+        self.reward_distribution = {}
 
-    def generation_starter(self, nets, args, g):
+    def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
         if process == 1:
-            episodes = self.generation_process((nets, None, g, steps, 0, 1))
+            episodes = Generator(self.env, self.args).run((nets, None, g, steps, 0, 1))
         else:
             import multiprocessing as mp
             with mp.Pool(process) as p:
-                episodes = p.map(self.generation_process, [(nets, None, g, steps, i, process) for i in range(process)])
+                args_list = [(nets, None, g, steps, i, process) for i in range(process)]
+                episodes = p.map(Generator(self.env, self.args).run, args_list)
             episodes = sum(episodes, [])
         return episodes
 
-    def train(self):
-        def gen_target(ep):
-            turn_idx = np.random.randint(len(ep[0]))
-            state = self.env.State()
-            for a in ep[0][:turn_idx]:
-                state.play(a)
-            v = ep[1]
-            return state.feature(), ep[2][turn_idx], [v if turn_idx % 2 == 0 else -v]
-
+    def train(self, gen):
         nets, params = Nets(self.env), []
         for net in nets.values():
             net.train()
@@ -204,7 +202,7 @@ class Trainer:
             p_loss_sum, v_loss_sum = 0, 0
             for _ in range(0, len(self.episodes), self.args['batch_size']):
                 ep_idx = np.random.randint(len(self.episodes), size=(self.args['batch_size']))
-                x, p_target, v_target = zip(*[gen_target(self.episodes[idx]) for idx in ep_idx])
+                x, p_target, v_target = zip(*[gen(self.episodes[idx]) for idx in ep_idx])
                 x = torch.FloatTensor(np.array(x))
                 p_target = torch.FloatTensor(np.array(p_target))
                 v_target = torch.FloatTensor(np.array(v_target))
@@ -226,6 +224,14 @@ class Trainer:
     def notime_planner(self, nets):
         return nets
 
+    def gen_target(self, ep):
+        turn_idx = np.random.randint(len(ep[0]))
+        state = self.env.State()
+        for a in ep[0][:turn_idx]:
+            state.play(a)
+        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        return state.feature(), ep[2][turn_idx], [v]
+
     def run(self, callback=None):
         nets = Nets(self.env)
         print(nets.inference(self.env.State()))
@@ -233,7 +239,7 @@ class Trainer:
             callback(self.env, nets)
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
-            episodes = self.generation_starter(nets, self.args, g)
+            episodes = self.generation_starter(nets, g)
             for ep in episodes:
                 reward = ep[1]
                 if reward not in self.reward_distribution:
@@ -242,7 +248,8 @@ class Trainer:
             self.episodes.extend(episodes)
 
             print('gen = ', dict(sorted(self.reward_distribution.items(), reverse=True)))
-            nets = self.train()
+
+            nets = self.train(self.gen_target)
             if callback is not None:
                 callback(self.env, self.notime_planner(nets))
 
