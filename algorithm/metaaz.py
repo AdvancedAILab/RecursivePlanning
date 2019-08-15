@@ -20,8 +20,6 @@ class MetaNode(Node):
         super().__init__(state, outputs)
         self.ro_sum = np.zeros_like(self.p)
         self.ro_sum_all = 0
-        self.p_sum = np.zeros_like(self.p)
-        self.v_sum = 0
 
     def update(self, action, q_new, ro_new):
         super().update(action, q_new)
@@ -55,7 +53,7 @@ class BookNets:
         o_book = self.book.inference(state)
         o_nets = self.nets.inference(state)
         # ratio; sqrt(n) : k
-        sqn, k = self.book.size(state), 64
+        sqn, k = self.book.size(state), 16
         p = (o_book['policy'] * sqn + o_nets['policy'] * k) / (sqn + k)
         v = (o_book['value']  * sqn + o_nets['value']  * k) / (sqn + k)
 
@@ -114,23 +112,21 @@ class Trainer(BaseTrainer):
 
         if len(path) < len(episode[0]):
             # sometimes guide path reaches terminal state
-            p, v = episode[2][len(path)], episode[3][len(path)]
-            self.tree[str(state)] = MetaNode(state, {'policy': p, 'value': v})
+            p_leaf, v_leaf = episode[2][len(path)], episode[3][len(path)]
+            self.tree[str(state)] = MetaNode(state, {'policy': p_leaf, 'value': v_leaf})
         else:
-            v = reward * (1 if len(path) % 2 == 0 else -1)
+            v_leaf = reward * (1 if len(path) % 2 == 0 else -1)
 
         q_diff_sum = 0
         direction = -1
-        for node, action, p, v_new in reversed(parents): # reversed order
-            node.update(action, (v + q_diff_sum) * direction, reward * direction)
+        for node, action, p, v in reversed(parents): # reversed order
+            node.update(action, (v_leaf + q_diff_sum) * direction, reward * direction)
 
             v_old = node.v
-            w = node.n_all
-            node.p_sum += p * w
-            node.v_sum += v_new * w
-            w_sum = node.n_all * (node.n_all) / 2
-            node.p = node.p_sum / w_sum
-            node.v = node.v_sum / w_sum
+            #alpha = 2 / (1 + node.n_all)
+            alpha = 1 / node.n_all
+            node.p = node.p * (1 - alpha) + p * alpha
+            node.v = node.v * (1 - alpha) + v * alpha
 
             q_diff_sum += (node.v - v_old) * direction
             direction *= -1
