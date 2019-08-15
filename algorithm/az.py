@@ -208,7 +208,7 @@ class Trainer:
                 v_target = torch.FloatTensor(np.array(v_target))
 
                 o = nets(x)
-                p_loss = torch.sum(-p_target * torch.log(o['policy']))
+                p_loss = torch.sum(p_target * torch.log(torch.clamp(p_target, 1e-12, 1) / torch.clamp(o['policy'], 1e-12, 1)))
                 v_loss = torch.sum((v_target - o['value']) ** 2)
 
                 p_loss_sum += p_loss.item()
