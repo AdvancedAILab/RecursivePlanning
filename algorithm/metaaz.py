@@ -12,6 +12,7 @@ import torch.optim as optim
 # domain dependent nets
 
 from .az import Nets, Node, Planner
+from .az import Generator as BaseGenerator
 from .az import Trainer as BaseTrainer
 
 class MetaNode(Node):
@@ -19,6 +20,8 @@ class MetaNode(Node):
         super().__init__(state, outputs)
         self.ro_sum = np.zeros_like(self.p)
         self.ro_sum_all = 0
+        self.p_sum = np.zeros_like(self.p)
+        self.v_sum = 0
 
     def update(self, action, q_new, ro_new):
         super().update(action, q_new)
@@ -52,11 +55,36 @@ class BookNets:
         o_book = self.book.inference(state)
         o_nets = self.nets.inference(state)
         # ratio; sqrt(n) : k
-        sqn, k = self.book.size(state), 8
+        sqn, k = self.book.size(state), 64
         p = (o_book['policy'] * sqn + o_nets['policy'] * k) / (sqn + k)
         v = (o_book['value']  * sqn + o_nets['value']  * k) / (sqn + k)
 
         return {'policy': p, 'value': v}
+
+class Generator(BaseGenerator):
+    def run(self, args):
+        nets, conn, st, n, process_id, master = args
+        if master is None:
+            # multiprocessing mode
+            conn.send((process_id, [], None))
+            while True:
+                g, path = conn.recv()
+                if g is None:
+                    break
+                print(g, '', end='', flush=True)
+                episode = self.generation(nets, path)
+                conn.send((process_id, path, episode))
+            conn.send((process_id, None, None))
+        else:
+            # single process mode
+            episodes = []
+            for g in range(st, st + n):
+                print(g, '', end='', flush=True)
+                path = master.next_path()
+                episode = self.generation(nets, path)
+                master.feed_episode(path, episode)
+                episodes.append(episode)
+            return episodes
 
 class Trainer(BaseTrainer):
     def __init__(self, env, args):
@@ -77,94 +105,70 @@ class Trainer(BaseTrainer):
         return path
 
     def feed_episode(self, path, episode):
-        alpha = 0.5
-
+        reward = episode[1] if len(episode[0]) % 2 == 0 else -episode[1]
         state = self.env.State()
         parents = []
         for d, action in enumerate(path):
-            p, v = episode[2][d], episode[3][d]
-            node = self.tree[str(state)]
-
-            diff = (v - node.v) * alpha
-            direction = -1
-            for nd, a in reversed(parents):
-                nd.q_sum[a] += diff * direction
-                nd.q_sum_all += diff * direction
-                direction *= -1
-
-            node.p = p * alpha + node.p * (1 - alpha)
-            node.v = v * alpha + node.v * (1 - alpha)
-
+            parents.append((self.tree[str(state)], action, episode[2][d], episode[3][d]))
             state.play(action)
-            parents.append((node, action))
 
-        reward = episode[1] if len(episode[0]) % 2 == 0 else -episode[1]
         if len(path) < len(episode[0]):
             # sometimes guide path reaches terminal state
             p, v = episode[2][len(path)], episode[3][len(path)]
-
-            key = str(state) 
-            if key not in self.tree:
-                self.tree[key] = MetaNode(state, {'policy': p, 'value': v})
+            self.tree[str(state)] = MetaNode(state, {'policy': p, 'value': v})
         else:
-            v = reward
+            v = reward * (1 if len(path) % 2 == 0 else -1)
 
+        q_diff_sum = 0
         direction = -1
-        for nd, a in reversed(parents):
-            nd.update(a, v * direction, reward * direction)
+        for node, action, p, v_new in reversed(parents): # reversed order
+            node.update(action, (v + q_diff_sum) * direction, reward * direction)
+
+            v_old = node.v
+            w = node.n_all
+            node.p_sum += p * w
+            node.v_sum += v_new * w
+            w_sum = node.n_all * (node.n_all) / 2
+            node.p = node.p_sum / w_sum
+            node.v = node.v_sum / w_sum
+
+            q_diff_sum += (node.v - v_old) * direction
             direction *= -1
-
-    def generation_process_solo(self, args):
-        nets, _, st, n, process_id, num_process = args
-        episodes = []
-        for g in range(st + process_id, st + n, num_process):
-            print(g, '', end='', flush=True)
-            path = self.next_path()
-            episode = self.generation(nets, path)
-            self.feed_episode(path, episode)
-            episodes.append(episode)
-        return episodes
-
-    def generation_process_multi(self, nets, conn, st, n, process_id, num_process):
-        for g in range(st + process_id, st + n, num_process):
-            print(g, '', end='', flush=True)
-            conn.send(True)
-            path = conn.recv()
-            episode = self.generation(nets, path)
-            conn.send((process_id, path, episode))
-        conn.send(False) # finished flag
 
     def server(self, conns):
         # first requests to workers
-        for conn in conns:
-            if conn.recv():
-                conn.send(self.next_path())
-
+        g = len(self.episodes)
         episodes = []
         while len(conns) > 0:
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
                 _, path, episode = conn.recv()
-                episodes.append(episode)
-                self.feed_episode(path, episode)
-                if conn.recv():
-                    conn.send(self.next_path())
-                else:
+                if path is None:
                     conns.remove(conn)
+                else:
+                    if episode is not None:
+                        episodes.append(episode)
+                        self.feed_episode(path, episode)
+                    if len(episodes) + len(conns) <= self.args['num_train_steps']:
+                        conn.send((g, self.next_path()))
+                        g += 1
+                    else:
+                        conn.send((None, None))
 
         return episodes
 
-    def generation_starter(self, nets, args, g):
+    def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
         if process == 1:
-            episodes = self.generation_process_solo((nets, None, g, steps, 0, 1))
+            episodes = Generator(self.env, self.args).run((nets, None, g, steps, 0, self))
         else:
             # make connection between server and worker
             server_conns = []
             for i in range(process):
                 conn0, conn1 = mp.Pipe(duplex=True)
                 server_conns.append(conn1)
-                p = mp.Process(target =self.generation_process_multi, args=(nets, conn0, g, steps, i, process))
+                args = (nets, conn0, g, steps, i, None),
+                p = mp.Process(target=Generator(self.env, self.args).run, args=args)
                 p.start()
             episodes = self.server(server_conns)
 
@@ -176,3 +180,21 @@ class Trainer(BaseTrainer):
         book = Book(self.tree)
         booknets = BookNets(book, nets)
         return booknets
+
+    def gen_target(self, ep):
+        turn_idx = np.random.randint(len(ep[0]))
+        state = self.env.State()
+        for a in ep[0][:turn_idx]:
+            state.play(a)
+        p = ep[2][turn_idx]
+        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+
+        # use result in meta-tree if found
+        key = str(state)
+        if key in self.tree:
+            node = self.tree[key]
+            if node.n_all > 0:
+                p = node.p
+                v = node.ro_sum_all / node.n_all
+
+        return state.feature(), p, [v]
