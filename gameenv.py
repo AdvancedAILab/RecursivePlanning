@@ -1,15 +1,15 @@
 import modules.GameImplementation.tictactoe as tictactoe
-#import modules.GameImplementation.reversi as reversi
+import modules.GameImplementation.reversi as reversi
 
 class TicTacToe:
     @staticmethod
     def State():
-        return tictactoe.State()
+        return tictactoe.TicTacToe()
 
 class Reversi:
     @staticmethod
     def State():
-        return reversi.State()
+        return reversi.Reversi()
 
 def make(envname):
     if envname == 'TicTacToe':
