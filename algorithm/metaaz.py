@@ -53,7 +53,7 @@ class BookNets:
         o_book = self.book.inference(state)
         o_nets = self.nets.inference(state)
         # ratio; sqrt(n) : k
-        sqn, k = self.book.size(state), 16
+        sqn, k = self.book.size(state) ** 0.5, 8
         p = (o_book['policy'] * sqn + o_nets['policy'] * k) / (sqn + k)
         v = (o_book['value']  * sqn + o_nets['value']  * k) / (sqn + k)
 
