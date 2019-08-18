@@ -15,7 +15,7 @@ from .board2d import Encoder, Decoder
 # encoder   ... (domain dependent) feature -> dependent
 # decoder   ... (domain dependent) encoded -> p, v
 
-vloss = 10
+vloss = 4
 
 class Nets(dict):
     def __init__(self, env):
@@ -50,9 +50,7 @@ class Node:
         self.n_all += 1
         self.q_sum_all += q_new
 
-        # remove virtual loss
-        self.n[action] -= vloss
-        self.q_sum[action] -= vloss * -1
+        self.remove_vloss(action)
 
     def best(self):
         return int(np.argmax(self.n))
@@ -68,11 +66,14 @@ class Node:
         ucb = q + 2.0 * np.sqrt(n_all) * p / (self.n + 1) - self.action_mask
         action = np.argmax(ucb)
 
-        # virtual loss
         self.n[action] += vloss
         self.q_sum[action] += vloss * -1
 
         return action, ucb
+
+    def remove_vloss(self, action):
+        self.n[action] -= vloss
+        self.q_sum[action] -= vloss * -1
 
 class Planner:
     def __init__(self, nets):
@@ -236,7 +237,7 @@ class Trainer:
         nets = Nets(self.env)
         print(nets.inference(self.env.State()))
         if callback is not None:
-            callback(self.env, nets)
+            callback(self.env, self.notime_planner(nets))
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
             episodes = self.generation_starter(nets, g)

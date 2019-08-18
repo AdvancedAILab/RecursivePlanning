@@ -1,7 +1,7 @@
   
 # Monte Carlo Tree Search by Monte Carlo Tree Search
 
-import time
+import time, copy, pickle
 import multiprocessing as mp
 import numpy as np
 import torch
@@ -66,13 +66,11 @@ class Generator(BaseGenerator):
             # multiprocessing mode
             conn.send((process_id, [], None))
             while True:
-                g, path = conn.recv()
-                if g is None:
+                path = pickle.loads(conn.recv())
+                if path is None:
                     break
-                print(g, '', end='', flush=True)
                 episode = self.generation(nets, path)
                 conn.send((process_id, path, episode))
-            conn.send((process_id, None, None))
         else:
             # single process mode
             episodes = []
@@ -89,18 +87,29 @@ class Trainer(BaseTrainer):
         super().__init__(env, args)
         self.tree = {}
 
-    def next_path(self):
+    def next_path(self, base_path=[]):
         # decide next guide
-        path = []
         state = self.env.State()
+        path = []
+
+        for action in base_path:
+            state.play(action)
+            path.append(action)
 
         while str(state) in self.tree:
             node = self.tree[str(state)]
-            a, _ = node.bandit(0)
-            state.play(a)
-            path.append(a)
+            action, _ = node.bandit(0)
+            state.play(action)
+            path.append(action)
 
         return path
+
+    def cancel_path(self, path):
+        # remove already added virtual losses
+        state = self.env.State()
+        for action in path:
+            node = self.tree[str(state)]
+            node.remove_vloss(action)
 
     def feed_episode(self, path, episode):
         reward = episode[1] if len(episode[0]) % 2 == 0 else -episode[1]
@@ -113,7 +122,9 @@ class Trainer(BaseTrainer):
         if len(path) < len(episode[0]):
             # sometimes guide path reaches terminal state
             p_leaf, v_leaf = episode[2][len(path)], episode[3][len(path)]
-            self.tree[str(state)] = MetaNode(state, {'policy': p_leaf, 'value': v_leaf})
+            key = str(state)
+            if key not in self.tree:
+                self.tree[key] = MetaNode(state, {'policy': p_leaf, 'value': v_leaf})
         else:
             v_leaf = reward * (1 if len(path) % 2 == 0 else -1)
 
@@ -123,8 +134,8 @@ class Trainer(BaseTrainer):
             node.update(action, (v_leaf + q_diff_sum) * direction, reward * direction)
 
             v_old = node.v
-            #alpha = 2 / (1 + node.n_all)
-            alpha = 1 / node.n_all
+            #alpha = 1 / node.n_all # mean
+            alpha = 2 / (1 + node.n_all) # linear weight
             node.p = node.p * (1 - alpha) + p * alpha
             node.v = node.v * (1 - alpha) + v * alpha
 
@@ -135,21 +146,53 @@ class Trainer(BaseTrainer):
         # first requests to workers
         g = len(self.episodes)
         episodes = []
+        waiting_conns = []
+        delayed_paths = []
+        active_paths = set()
         while len(conns) > 0:
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
+                # receiving results
                 _, path, episode = conn.recv()
-                if path is None:
-                    conns.remove(conn)
-                else:
-                    if episode is not None:
-                        episodes.append(episode)
-                        self.feed_episode(path, episode)
-                    if len(episodes) + len(conns) <= self.args['num_train_steps']:
-                        conn.send((g, self.next_path()))
-                        g += 1
+                if episode is not None:
+                    active_paths.remove(pickle.dumps(path))
+                    episodes.append(episode)
+                    self.feed_episode(path, episode)
+            waiting_conns += conn_list
+            while len(waiting_conns) > 0:
+                # sending requests
+                if len(episodes) + len(conns) <= self.args['num_train_steps']:
+                    # delayed paths
+                    base_path = []
+                    for path_bin in delayed_paths:
+                        if path_bin not in active_paths:
+                            # ok, we can proceed this path
+                            base_path = pickle.loads(path_bin)
+                            delayed_paths.remove(path_bin)
+                            break
+
+                    path = self.next_path(base_path)
+                    path_bin = pickle.dumps(path)
+                    if path_bin in active_paths:
+                        delayed_paths.append(path_bin)
+                        if len(delayed_paths) >= len(waiting_conns):
+                            break
                     else:
-                        conn.send((None, None))
+                        active_paths.add(path_bin)
+                        conn = waiting_conns[0]
+                        waiting_conns.remove(conn)
+                        conn.send(path_bin)
+                        print(g, '', end='', flush=True)
+                        g += 1
+                else:
+                    # finish request
+                    for conn in waiting_conns:
+                        conn.send(pickle.dumps(None))
+                        conns.remove(conn)
+                        waiting_conns.remove(conn)
+
+        for path_bin in delayed_paths:
+            self.cancel_path(pickle.loads(path_bin))
 
         return episodes
 

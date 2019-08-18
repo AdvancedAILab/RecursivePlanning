@@ -2,7 +2,7 @@ import gameenv as gym
 from match import RandomAgent, Agent, evaluate
 
 #from algorithm.az import Nets, Planner, Trainer
-from algorithm.metaaz import Nets, Planner, Trainer
+from algorithm.mctsbymcts import Nets, Planner, Trainer
 
 
 args = {
