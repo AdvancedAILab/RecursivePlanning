@@ -1,3 +1,3 @@
 pushd modules/GameImplementation
-./build.sh
+make -j2
 popd
