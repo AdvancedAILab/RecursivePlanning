@@ -149,18 +149,21 @@ class Trainer(BaseTrainer):
         waiting_conns = []
         delayed_paths = []
         active_paths = set()
+
         while len(conns) > 0:
+
+            # receive results from generators
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
-                # receiving results
                 _, path, episode = conn.recv()
                 if episode is not None:
                     active_paths.remove(pickle.dumps(path))
                     episodes.append(episode)
                     self.feed_episode(path, episode)
             waiting_conns += conn_list
+
+            # send next requests
             while len(waiting_conns) > 0:
-                # sending requests
                 if len(episodes) + len(conns) <= self.args['num_train_steps']:
                     # delayed paths
                     base_path = []
@@ -174,10 +177,13 @@ class Trainer(BaseTrainer):
                     path = self.next_path(base_path)
                     path_bin = pickle.dumps(path)
                     if path_bin in active_paths:
+                        # wait until the result of this path returns 
                         delayed_paths.append(path_bin)
                         if len(delayed_paths) >= len(waiting_conns):
+                            # stop storing delayed paths until new results come
                             break
                     else:
+                        # send this path without waiting
                         active_paths.add(path_bin)
                         conn = waiting_conns[0]
                         waiting_conns.remove(conn)
@@ -187,10 +193,11 @@ class Trainer(BaseTrainer):
                 else:
                     # finish request
                     for conn in waiting_conns:
-                        conn.send(pickle.dumps(None))
+                        conn.send(pickle.dumps(None)) # stop request
                         conns.remove(conn)
                         waiting_conns.remove(conn)
 
+        # reset delayed paths to make tree consistent
         for path_bin in delayed_paths:
             self.cancel_path(pickle.loads(path_bin))
 
