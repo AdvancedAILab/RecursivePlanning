@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 from .torch_module import *
 
+filters = 32
+blocks = 6
+
 class Encoder(BaseNet):
     def __init__(self, env):
         super().__init__()
@@ -12,8 +15,8 @@ class Encoder(BaseNet):
         input_shape = state.feature().shape
         self.board_size = input_shape[1] * input_shape[2]
 
-        self.conv = Conv(input_shape[0], 16, 3, bn=True)
-        self.blocks = nn.ModuleList([WideResidual(16, 3, bn=True) for _ in range(4)])
+        self.conv = Conv(input_shape[0], filters, 3, bn=True)
+        self.blocks = nn.ModuleList([WideResidual(filters, 3, bn=True) for _ in range(blocks)])
 
     def forward(self, x):
         h = F.relu(self.conv(x))
@@ -30,10 +33,10 @@ class Decoder(BaseNet):
         self.board_size = input_shape[1] * input_shape[2]
         self.action_length = env.State().action_length()
 
-        self.conv_p = Conv(16, 2, 1, bn=True)
+        self.conv_p = Conv(filters, 2, 1, bn=True)
         self.fc_p = nn.Linear(self.board_size * 2, self.action_length, bias=False)
 
-        self.conv_v = Conv(16, 1, 1, bn=True)
+        self.conv_v = Conv(filters, 1, 1, bn=True)
         self.fc_v = nn.Linear(self.board_size * 1, 1, bias=False)
 
     def forward(self, encoded):
