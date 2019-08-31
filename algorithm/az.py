@@ -1,7 +1,9 @@
   
 # Alpha Zero
 
-import time
+import time, copy
+import multiprocessing as mp
+import threading
 import numpy as np
 import torch
 import torch.nn as nn
@@ -176,23 +178,33 @@ class Trainer:
     def __init__(self, env, args):
         self.env = env
         self.args = args
+        self.nets = None
         self.episodes = []
         self.reward_distribution = {}
+
+    def feed_episode(self, episode):
+        # update stats
+        self.episodes.append(episode)
+        reward = episode[1]
+        if reward not in self.reward_distribution:
+            self.reward_distribution[reward] = 0
+        self.reward_distribution[reward] += 1
 
     def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
         if process == 1:
             episodes = Generator(self.env, self.args).run((nets, None, g, steps, 0, 1))
         else:
-            import multiprocessing as mp
             with mp.Pool(process) as p:
                 args_list = [(nets, None, g, steps, i, process) for i in range(process)]
                 episodes = p.map(Generator(self.env, self.args).run, args_list)
             episodes = sum(episodes, [])
-        return episodes
+        for ep in episodes:
+            self.feed_episode(ep)
 
     def train(self, gen):
-        nets, params = Nets(self.env), []
+        #nets, params = Nets(self.env), []
+        nets, params = copy.deepcopy(self.nets), []
         for net in nets.values():
             net.train()
             params.extend(list(net.parameters()))
@@ -200,6 +212,8 @@ class Trainer:
         optimizer = optim.SGD(params, lr=1e-3, weight_decay=1e-4, momentum=0.75)
 
         for _ in range(self.args['num_epochs']):
+            if self.stop_train:
+                break
             p_loss_sum, v_loss_sum = 0, 0
             for _ in range(0, len(self.episodes), self.args['batch_size']):
                 ep_idx = np.random.randint(len(self.episodes), size=(self.args['batch_size']))
@@ -220,7 +234,7 @@ class Trainer:
                 optimizer.step()
 
         print('p_loss %f v_loss %f' % (p_loss_sum / len(self.episodes), v_loss_sum / len(self.episodes)))
-        return nets
+        self.nets = nets
 
     def notime_planner(self, nets):
         return nets
@@ -234,24 +248,28 @@ class Trainer:
         return state.feature(), ep[2][turn_idx], [v]
 
     def run(self, callback=None):
-        nets = Nets(self.env)
-        print(nets.inference(self.env.State()))
-        if callback is not None:
-            callback(self.env, self.notime_planner(nets))
+        self.nets = Nets(self.env)
+        print(self.nets.inference(self.env.State()))
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
-            episodes = self.generation_starter(nets, g)
-            for ep in episodes:
-                reward = ep[1]
-                if reward not in self.reward_distribution:
-                    self.reward_distribution[reward] = 0
-                self.reward_distribution[reward] += 1
-            self.episodes.extend(episodes)
+            if callback is not None:
+                callback(self.env, self.notime_planner(self.nets))
 
+            if g > 0:
+                # start training
+                self.stop_train = False
+                if self.args['concurrent_train']:
+                    train_thread = threading.Thread(target=self.train, args=([self.gen_target]))
+                    train_thread.start()
+                else:
+                    self.train(self.gen_target)
+
+            # episode generation
+            self.generation_starter(self.nets, g)
             print('gen = ', dict(sorted(self.reward_distribution.items(), reverse=True)))
 
-            nets = self.train(self.gen_target)
-            if callback is not None:
-                callback(self.env, self.notime_planner(nets))
+            if g > 0 and self.args['concurrent_train']:
+                self.stop_train = True
+                train_thread.join()
 
-        return nets
+        return self.nets

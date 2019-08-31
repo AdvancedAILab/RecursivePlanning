@@ -61,26 +61,25 @@ class BookNets:
 
 class Generator(BaseGenerator):
     def run(self, args):
-        nets, conn, st, n, process_id, master = args
-        if master is None:
-            # multiprocessing mode
+        nets, destination, st, n, process_id = args
+        if isinstance(destination, mp.connection.Connection):
+            # server-client mode
+            conn = destination
             conn.send((process_id, [], None))
             while True:
-                path = pickle.loads(conn.recv())
+                path = conn.recv()
                 if path is None:
                     break
                 episode = self.generation(nets, path)
                 conn.send((process_id, path, episode))
         else:
             # single process mode
-            episodes = []
+            master = destination
             for g in range(st, st + n):
                 print(g, '', end='', flush=True)
                 path = master.next_path()
                 episode = self.generation(nets, path)
                 master.feed_episode(path, episode)
-                episodes.append(episode)
-            return episodes
 
 class Trainer(BaseTrainer):
     def __init__(self, env, args):
@@ -112,6 +111,9 @@ class Trainer(BaseTrainer):
             node.remove_vloss(action)
 
     def feed_episode(self, path, episode):
+        super().feed_episode(episode)
+
+        # feed episode to meta tree
         reward = episode[1] if len(episode[0]) % 2 == 0 else -episode[1]
         state = self.env.State()
         parents = []
@@ -143,6 +145,7 @@ class Trainer(BaseTrainer):
             direction *= -1
 
     def next_path_delay(self, delay_info, num_conns):
+        # decide next path with information of delayed paths
         path = None
 
         def check_path(path):
@@ -211,11 +214,11 @@ class Trainer(BaseTrainer):
                     # send this path
                     delay_info['path_sent'].add(path_bin)
                     waiting_conns.remove(conn)
-                    conn.send(path_bin)
+                    conn.send(path)
                     print(g, '', end='', flush=True)
                     g += 1
                 else:
-                    conn.send(pickle.dumps(None)) # stop request
+                    conn.send(None) # stop request
                     conns.remove(conn)
                     waiting_conns.remove(conn)
 
@@ -228,21 +231,19 @@ class Trainer(BaseTrainer):
     def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
         if process == 1:
-            episodes = Generator(self.env, self.args).run((nets, None, g, steps, 0, self))
+            Generator(self.env, self.args).run((nets, self, g, steps, 0))
         else:
             # make connection between server and worker
             server_conns = []
             for i in range(process):
                 conn0, conn1 = mp.Pipe(duplex=True)
                 server_conns.append(conn1)
-                args = (nets, conn0, g, steps, i, None),
+                args = (nets, conn0, g, steps, i),
                 p = mp.Process(target=Generator(self.env, self.args).run, args=args)
                 p.start()
-            episodes = self.server(server_conns)
+            self.server(server_conns)
 
-        print('meta tree size = %d' % len(self.tree))
-        print('episodes = %d' % len(episodes))
-        return episodes
+        print('\nmeta tree size = %d episodes = %d' % (len(self.tree), len(self.episodes)))
 
     def notime_planner(self, nets):
         book = Book(self.tree)
