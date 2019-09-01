@@ -232,8 +232,8 @@ class Trainer(BaseTrainer):
         booknets = BookNets(book, nets)
         return booknets
 
-    def gen_target(self, ep):
-        turn_idx = np.random.randint(len(ep[0]))
+    def gen_target(self, ep, dice):
+        turn_idx = dice.randint(len(ep[0]))
         state = self.env.State()
         for a in ep[0][:turn_idx]:
             state.play(a)
