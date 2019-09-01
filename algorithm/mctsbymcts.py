@@ -98,14 +98,6 @@ class Trainer(BaseTrainer):
 
         return state.record_string()
 
-    def cancel_path(self, path):
-        # remove already added virtual losses
-        state = self.env.State()
-        for action in state.str2path(path):
-            node = self.tree[str(state)]
-            node.remove_vloss(action)
-            state.play(action)
-
     def feed_episode(self, path, episode):
         super().feed_episode(episode)
 
@@ -124,6 +116,8 @@ class Trainer(BaseTrainer):
             key = str(state)
             if key not in self.tree:
                 self.tree[key] = MetaNode(state, {'policy': p_leaf, 'value': v_leaf})
+            else:
+                return
         else:
             v_leaf = reward * (1 if len(path) % 2 == 0 else -1)
 
@@ -141,36 +135,11 @@ class Trainer(BaseTrainer):
             q_diff_sum += (node.v - v_old) * direction
             direction *= -1
 
-    def next_path_delay(self, status, num_conns):
-        # decide next path with information of delayed paths
-        def check_path(path):
-            if path in status['sent']:
-                status['delayed'].append(path)
-                return False
-            return True
-
-        while len(status['ready']) > 0:
-            base_path = status['ready'].pop(0)
-            path = self.next_path(base_path)
-            if check_path(path):
-                return path
-
-        # no delayed path was selected
-        while len(status['delayed']) < num_conns - 1:
-            path = self.next_path()
-            if check_path(path):
-                return path
-
-        return None
-
     def server(self, conns):
         # first requests to workers
         g = len(self.episodes)
-        num_episodes = 0
+        num_episodes, sent = 0, 0
         waiting_conns = []
-        status = {
-            'sent': set(), 'delayed': [], 'ready': []
-        }
 
         while len(conns) > 0:
 
@@ -179,36 +148,25 @@ class Trainer(BaseTrainer):
             for conn in conn_list:
                 _, path, episode = conn.recv()
                 if episode is not None:
-                    status['sent'].remove(path)
-                    while path in status['delayed']:
-                        # this path is ready to extract
-                        status['delayed'].remove(path)
-                        status['ready'].append(path)
                     self.feed_episode(path, episode)
+                    sent -= 1
                     num_episodes += 1
             waiting_conns += conn_list
 
             # send next requests
             while len(waiting_conns) > 0:
-                if num_episodes + len(status['sent']) < self.args['num_train_steps']:
-                    path = self.next_path_delay(status, len(conns))
-                    if path is None:
-                        break
-
+                if num_episodes + sent < self.args['num_train_steps']:
+                    path = self.next_path()
                     # send this path
-                    status['sent'].add(path)
                     conn = waiting_conns.pop(0)
                     conn.send(path)
+                    sent += 1
                     print(g, '', end='', flush=True)
                     g += 1
                 else:
                     conn = waiting_conns.pop(0)
                     conn.send(None) # stop request
                     conns.remove(conn)
-
-        # reset delayed paths to make tree consistent
-        for path in status['delayed']:
-            self.cancel_path(path)
 
     def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
