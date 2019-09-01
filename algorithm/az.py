@@ -154,9 +154,10 @@ class Generator:
             episodes.append(self.generation(nets))
         return episodes
 
-    def generation(self, nets, guide=[]):
+    def generation(self, nets, guide=''):
         record, ps, vs = [], [], []
         state = self.env.State()
+        guide = state.str2path(guide)
         planner = Planner(nets)
         temperature = 0.7
         while not state.terminal():
@@ -205,8 +206,9 @@ class Trainer:
     def train(self, gen):
         #nets, params = Nets(self.env), []
         nets, params = copy.deepcopy(self.nets), []
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         for net in nets.values():
-            net.train()
+            net.train().to(device)
             params.extend(list(net.parameters()))
 
         optimizer = optim.SGD(params, lr=1e-3, weight_decay=1e-4, momentum=0.75)
@@ -218,9 +220,10 @@ class Trainer:
             for _ in range(0, len(self.episodes), self.args['batch_size']):
                 ep_idx = np.random.randint(len(self.episodes), size=(self.args['batch_size']))
                 x, p_target, v_target = zip(*[gen(self.episodes[idx]) for idx in ep_idx])
-                x = torch.FloatTensor(np.array(x))
-                p_target = torch.FloatTensor(np.array(p_target))
-                v_target = torch.FloatTensor(np.array(v_target))
+
+                x = torch.FloatTensor(np.array(x)).to(device).contiguous()
+                p_target = torch.FloatTensor(np.array(p_target)).to(device).contiguous()
+                v_target = torch.FloatTensor(np.array(v_target)).to(device).contiguous()
 
                 o = nets(x)
                 p_loss = torch.sum(p_target * torch.log(torch.clamp(p_target, 1e-12, 1) / torch.clamp(o['policy'], 1e-12, 1)))
@@ -234,6 +237,8 @@ class Trainer:
                 optimizer.step()
 
         print('p_loss %f v_loss %f' % (p_loss_sum / len(self.episodes), v_loss_sum / len(self.episodes)))
+        for net in nets.values():
+            net.cpu()
         self.nets = nets
 
     def notime_planner(self, nets):
@@ -252,9 +257,6 @@ class Trainer:
         print(self.nets.inference(self.env.State()))
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
-            if callback is not None:
-                callback(self.env, self.notime_planner(self.nets))
-
             if g > 0:
                 # start training
                 self.stop_train = False
@@ -263,6 +265,9 @@ class Trainer:
                     train_thread.start()
                 else:
                     self.train(self.gen_target)
+
+            if callback is not None:
+                callback(self.env, self.notime_planner(copy.deepcopy(self.nets)))
 
             # episode generation
             self.generation_starter(self.nets, g)

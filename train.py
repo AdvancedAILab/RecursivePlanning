@@ -11,7 +11,7 @@ args = {
     'num_train_steps': 120,
     'num_simulations': 50,
     'num_process': 3,
-    'num_eval_process': 4,
+    'num_eval_process': 3,
     'concurrent_train': True,
 }
 
