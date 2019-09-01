@@ -139,10 +139,8 @@ class Trainer(BaseTrainer):
         # first requests to workers
         g = len(self.episodes)
         num_episodes, sent = 0, 0
-        waiting_conns = []
 
         while len(conns) > 0:
-
             # receive results from generators
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
@@ -151,20 +149,17 @@ class Trainer(BaseTrainer):
                     self.feed_episode(path, episode)
                     sent -= 1
                     num_episodes += 1
-            waiting_conns += conn_list
 
             # send next requests
-            while len(waiting_conns) > 0:
+            for conn in conn_list:
                 if num_episodes + sent < self.args['num_train_steps']:
                     path = self.next_path()
                     # send this path
-                    conn = waiting_conns.pop(0)
                     conn.send(path)
                     sent += 1
                     print(g, '', end='', flush=True)
                     g += 1
                 else:
-                    conn = waiting_conns.pop(0)
                     conn.send(None) # stop request
                     conns.remove(conn)
 
