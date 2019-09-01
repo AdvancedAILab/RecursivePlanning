@@ -19,6 +19,15 @@ class Agent(RandomAgent):
         ap_list = sorted([(a, p[a]) for a in state.legal_actions()], key=lambda x:-x[1])
         return ap_list[0][0]
 
+class SoftAgent(Agent):
+    def action(self, state):
+        o = self.model.inference(state)
+        p = o['policy']
+        mask = np.zeros_like(p)
+        mask[state.legal_actions()] = 1
+        p = (p + 1e-16) * mask
+        return np.random.choice(np.arange(len(p)), p=p/p.sum())
+
 def do_match(env, agents):
     state = env.State()
     turn = 0
@@ -31,10 +40,10 @@ def do_match(env, agents):
     return reward
 
 def evaluate_process(args):
-    env, agents, n, process_id, num_process = args
+    env, agents, flip, n, process_id, num_process = args
     rewards = []
     for i in range(process_id, n, num_process):
-        if i % 2 == 0:
+        if not flip or i % 2 == 0:
             reward = do_match(env, [agents[0], agents[1]])
         else:
             reward = -do_match(env, [agents[1], agents[0]])
@@ -42,13 +51,14 @@ def evaluate_process(args):
         rewards.append(reward)
     return rewards
 
-def evaluate(env, agents, n, num_process=1):
+def evaluate(env, agents, flip, n, num_process=1):
     if num_process == 1:
-        results = evaluate_process((env, agents, n, 0, 1))
+        results = evaluate_process((env, agents, flip, n, 0, 1))
     else:
         import multiprocessing as mp
         with mp.Pool(num_process) as p:
-            results = p.map(evaluate_process, [(env, agents, n, i, num_process) for i in range(num_process)])
+            argss = [(env, agents, flip, n, i, num_process) for i in range(num_process)]
+            results = p.map(evaluate_process, argss)
         results = sum(results, [])
 
     # gather results
