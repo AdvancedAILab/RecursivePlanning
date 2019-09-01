@@ -86,27 +86,22 @@ class Trainer(BaseTrainer):
         super().__init__(env, args)
         self.tree = {}
 
-    def next_path(self, base_path=[]):
+    def next_path(self, base_path=''):
         # decide next guide
         state = self.env.State()
-        path = []
-
-        for action in base_path:
-            state.play(action)
-            path.append(action)
+        state.plays(base_path)
 
         while str(state) in self.tree:
             node = self.tree[str(state)]
             action, _ = node.bandit(0)
             state.play(action)
-            path.append(action)
 
-        return path
+        return state.record_string()
 
     def cancel_path(self, path):
         # remove already added virtual losses
         state = self.env.State()
-        for action in path:
+        for action in state.str2path(path):
             node = self.tree[str(state)]
             node.remove_vloss(action)
             state.play(action)
@@ -117,6 +112,7 @@ class Trainer(BaseTrainer):
         # feed episode to meta tree
         reward = episode[1] if len(episode[0]) % 2 == 0 else -episode[1]
         state = self.env.State()
+        path = state.str2path(path)
         parents = []
         for d, action in enumerate(path):
             parents.append((self.tree[str(state)], action, episode[2][d], episode[3][d]))
@@ -145,45 +141,35 @@ class Trainer(BaseTrainer):
             q_diff_sum += (node.v - v_old) * direction
             direction *= -1
 
-    def next_path_delay(self, delay_info, num_conns):
+    def next_path_delay(self, status, num_conns):
         # decide next path with information of delayed paths
-        path = None
-
         def check_path(path):
-            path_bin = pickle.dumps(path)
-            if path_bin in delay_info['path_sent']:
-                delay_info['path'].append(path_bin)
-                return None
-            return path_bin
+            if path in status['sent']:
+                status['delayed'].append(path)
+                return False
+            return True
 
-        while len(delay_info['path_ready']) > 0:
-            path_bin = delay_info['path_ready'][0]
-            delay_info['path_ready'].remove(path_bin)
-            base_path = pickle.loads(path_bin)
-
+        while len(status['ready']) > 0:
+            base_path = status['ready'].pop(0)
             path = self.next_path(base_path)
-            path_bin = check_path(path)
-            if path_bin is not None:
-                return path, path_bin
+            if check_path(path):
+                return path
 
         # no delayed path was selected
-        while len(delay_info['path']) < num_conns - 1:
+        while len(status['delayed']) < num_conns - 1:
             path = self.next_path()
-            path_bin = check_path(path)
-            if path_bin is not None:
-                return path, path_bin
+            if check_path(path):
+                return path
 
-        return None, None
+        return None
 
     def server(self, conns):
         # first requests to workers
         g = len(self.episodes)
-        episodes = []
+        num_episodes = 0
         waiting_conns = []
-        delay_info = {
-            'path': [],
-            'path_ready': [],
-            'path_sent': set(),
+        status = {
+            'sent': set(), 'delayed': [], 'ready': []
         }
 
         while len(conns) > 0:
@@ -193,41 +179,36 @@ class Trainer(BaseTrainer):
             for conn in conn_list:
                 _, path, episode = conn.recv()
                 if episode is not None:
-                    path_bin = pickle.dumps(path)
-                    delay_info['path_sent'].remove(path_bin)
-                    while path_bin in delay_info['path']:
+                    status['sent'].remove(path)
+                    while path in status['delayed']:
                         # this path is ready to extract
-                        delay_info['path'].remove(path_bin)
-                        delay_info['path_ready'].append(path_bin)
-                    episodes.append(episode)
+                        status['delayed'].remove(path)
+                        status['ready'].append(path)
                     self.feed_episode(path, episode)
+                    num_episodes += 1
             waiting_conns += conn_list
 
             # send next requests
             while len(waiting_conns) > 0:
-                conn = waiting_conns[0]
-
-                if len(episodes) + len(delay_info['path_sent']) < self.args['num_train_steps']:
-                    path, path_bin = self.next_path_delay(delay_info, len(conns))
+                if num_episodes + len(status['sent']) < self.args['num_train_steps']:
+                    path = self.next_path_delay(status, len(conns))
                     if path is None:
                         break
 
                     # send this path
-                    delay_info['path_sent'].add(path_bin)
-                    waiting_conns.remove(conn)
+                    status['sent'].add(path)
+                    conn = waiting_conns.pop(0)
                     conn.send(path)
                     print(g, '', end='', flush=True)
                     g += 1
                 else:
+                    conn = waiting_conns.pop(0)
                     conn.send(None) # stop request
                     conns.remove(conn)
-                    waiting_conns.remove(conn)
 
         # reset delayed paths to make tree consistent
-        for path_bin in delay_info['path']:
-            self.cancel_path(pickle.loads(path_bin))
-
-        return episodes
+        for path in status['delayed']:
+            self.cancel_path(path)
 
     def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
