@@ -109,6 +109,7 @@ class Trainer(BaseTrainer):
         for action in path:
             node = self.tree[str(state)]
             node.remove_vloss(action)
+            state.play(action)
 
     def feed_episode(self, path, episode):
         super().feed_episode(episode)
