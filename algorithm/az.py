@@ -60,7 +60,7 @@ class Node:
     def bandit(self, depth):
         p = self.p
         if depth == 0:
-            p = 0.75 * p + 0.25 * np.random.dirichlet([0.1] * len(p))
+            p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
 
         # pucb
         q_sum_all, n_all = self.q_sum_all + self.v / 2, self.n_all + 1
@@ -203,7 +203,7 @@ class Trainer:
         for ep in episodes:
             self.feed_episode(ep)
 
-    def train(self, gen):
+    def train(self, gen, dice):
         #nets, params = Nets(self.env), []
         nets, params = copy.deepcopy(self.nets), []
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -218,8 +218,8 @@ class Trainer:
                 break
             p_loss_sum, v_loss_sum = 0, 0
             for _ in range(0, len(self.episodes), self.args['batch_size']):
-                ep_idx = np.random.randint(len(self.episodes), size=(self.args['batch_size']))
-                x, p_target, v_target = zip(*[gen(self.episodes[idx]) for idx in ep_idx])
+                ep_idx = dice.randint(len(self.episodes), size=(self.args['batch_size']))
+                x, p_target, v_target = zip(*[gen(self.episodes[idx], dice) for idx in ep_idx])
 
                 x = torch.FloatTensor(np.array(x)).to(device).contiguous()
                 p_target = torch.FloatTensor(np.array(p_target)).to(device).contiguous()
@@ -244,8 +244,8 @@ class Trainer:
     def notime_planner(self, nets):
         return nets
 
-    def gen_target(self, ep):
-        turn_idx = np.random.randint(len(ep[0]))
+    def gen_target(self, ep, dice):
+        turn_idx = dice.randint(len(ep[0]))
         state = self.env.State()
         for a in ep[0][:turn_idx]:
             state.play(a)
@@ -255,16 +255,17 @@ class Trainer:
     def run(self, callback=None):
         self.nets = Nets(self.env)
         print(self.nets.inference(self.env.State()))
+        dice_train = np.random.RandomState(123)
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
             if g > 0:
                 # start training
                 self.stop_train = False
                 if self.args['concurrent_train']:
-                    train_thread = threading.Thread(target=self.train, args=([self.gen_target]))
+                    train_thread = threading.Thread(target=self.train, args=([self.gen_target, dice_train]))
                     train_thread.start()
                 else:
-                    self.train(self.gen_target)
+                    self.train(self.gen_target, dice_train)
 
             if callback is not None:
                 callback(self.env, self.notime_planner(copy.deepcopy(self.nets)))
