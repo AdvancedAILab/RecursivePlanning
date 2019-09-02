@@ -140,7 +140,7 @@ class Trainer(BaseTrainer):
         g = len(self.episodes)
         num_episodes, sent = 0, 0
 
-        while len(conns) > 0:
+        while num_episodes < self.args['num_train_steps']:
             # receive results from generators
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
@@ -159,9 +159,9 @@ class Trainer(BaseTrainer):
                     sent += 1
                     print(g, '', end='', flush=True)
                     g += 1
-                else:
-                    conn.send(None) # stop request
-                    conns.remove(conn)
+
+        for conn in conns:
+            conn.send(None) # stop request
 
     def generation_starter(self, nets, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
