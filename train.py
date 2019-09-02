@@ -1,5 +1,5 @@
 import gamegym as gym
-from match import RandomAgent, Agent, SoftAgent, evaluate
+from match import RandomAgent, Agent, SoftAgent, Evaluator
 
 #from algorithm.az import Nets, Planner, Trainer
 from algorithm.mctsbymcts import Nets, Planner, Trainer
@@ -20,15 +20,14 @@ env = gym.make('TicTacToe')
 #env = gym.make('AnimalShogi')
 #env = gym.make('Go')
 
+evaluator = Evaluator(env, args)
 def evaluation(env, planner):
     # vs random
     agents = [Agent(planner), RandomAgent()]
-    results = evaluate(env, agents, True, 1000, args['num_eval_process'])
-    print('rand= ', dict(sorted(results.items(), reverse=True)))
+    print('rand= ', evaluator.start(agents, True, 1000))
     # vs myself
     agents = [SoftAgent(planner), SoftAgent(planner)]
-    results = evaluate(env, agents, False, 1000, args['num_eval_process'])
-    print('self= ', dict(sorted(results.items(), reverse=True)))
+    print('self= ', evaluator.start(agents, False, 1000))
 
 planner = Planner(Nets(env))
 
