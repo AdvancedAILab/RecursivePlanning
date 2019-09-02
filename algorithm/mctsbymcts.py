@@ -1,4 +1,4 @@
-  
+ 
 # Monte Carlo Tree Search by Monte Carlo Tree Search
 
 import time, copy, pickle
@@ -172,8 +172,7 @@ class Trainer(BaseTrainer):
             'sent': set(), 'delayed': [], 'ready': []
         }
 
-        while len(conns) > 0:
-
+        while num_episodes < self.args['num_train_steps']:
             # receive results from generators
             conn_list = mp.connection.wait(conns)
             for conn in conn_list:
@@ -201,10 +200,9 @@ class Trainer(BaseTrainer):
                     conn.send(path)
                     print(g, '', end='', flush=True)
                     g += 1
-                else:
-                    conn = waiting_conns.pop(0)
-                    conn.send(None) # stop request
-                    conns.remove(conn)
+
+        for conn in conns:
+            conn.send(None) # stop request
 
         # reset delayed paths to make tree consistent
         for path in status['delayed']:
