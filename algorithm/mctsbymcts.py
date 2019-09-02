@@ -192,7 +192,7 @@ class Trainer(BaseTrainer):
                         status['ready'].append(path)
                     self.feed_episode(path, episode)
                     num_episodes += 1
-                waiting_conns += conn_list
+            waiting_conns += conn_list
 
             # send next requests
             while len(waiting_conns) > 0:
