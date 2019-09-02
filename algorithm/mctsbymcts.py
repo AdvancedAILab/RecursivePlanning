@@ -65,13 +65,17 @@ class Generator(BaseGenerator):
         if isinstance(destination, mp.connection.Connection):
             # server-client mode
             conn = destination
-            conn.send((process_id, '', None))
             while True:
-                path = conn.recv()
-                if path is None:
+                nets = pickle.loads(conn.recv())
+                if nets is None:
                     break
-                episode = self.generation(nets, path)
-                conn.send((process_id, path, episode))
+                conn.send((process_id, '', None))
+                while True:
+                    path = conn.recv()
+                    if path is None:
+                        break
+                    episode = self.generation(nets, path)
+                    conn.send((process_id, path, episode))
         else:
             # single process mode
             master = destination
@@ -85,6 +89,7 @@ class Trainer(BaseTrainer):
     def __init__(self, env, args):
         super().__init__(env, args)
         self.tree = {}
+        self.conns = None
 
     def next_path(self, base_path=''):
         # decide next guide
@@ -163,7 +168,7 @@ class Trainer(BaseTrainer):
 
         return None
 
-    def server(self, conns):
+    def server(self):
         # first requests to workers
         g = len(self.episodes)
         num_episodes = 0
@@ -171,10 +176,12 @@ class Trainer(BaseTrainer):
         status = {
             'sent': set(), 'delayed': [], 'ready': []
         }
+        for conn in self.conns:
+            conn.send(pickle.dumps(self.nets))
 
         while num_episodes < self.args['num_train_steps']:
             # receive results from generators
-            conn_list = mp.connection.wait(conns)
+            conn_list = mp.connection.wait(self.conns)
             for conn in conn_list:
                 _, path, episode = conn.recv()
                 if episode is not None:
@@ -185,12 +192,12 @@ class Trainer(BaseTrainer):
                         status['ready'].append(path)
                     self.feed_episode(path, episode)
                     num_episodes += 1
-            waiting_conns += conn_list
+                waiting_conns += conn_list
 
             # send next requests
             while len(waiting_conns) > 0:
                 if num_episodes + len(status['sent']) < self.args['num_train_steps']:
-                    path = self.next_path_delay(status, len(conns))
+                    path = self.next_path_delay(status, len(self.conns))
                     if path is None:
                         break
 
@@ -203,7 +210,7 @@ class Trainer(BaseTrainer):
                 else:
                     break
 
-        for conn in conns:
+        for conn in self.conns:
             conn.send(None) # stop request
 
         # reset delayed paths to make tree consistent
@@ -216,14 +223,15 @@ class Trainer(BaseTrainer):
             Generator(self.env, self.args).run((nets, self, g, steps, 0))
         else:
             # make connection between server and worker
-            server_conns = []
-            for i in range(process):
-                conn0, conn1 = mp.Pipe(duplex=True)
-                server_conns.append(conn1)
-                args = (nets, conn0, g, steps, i),
-                p = mp.Process(target=Generator(self.env, self.args).run, args=args)
-                p.start()
-            self.server(server_conns)
+            if self.conns is None:
+                server_conns = []
+                for i in range(process):
+                    conn0, conn1 = mp.Pipe(duplex=True)
+                    server_conns.append(conn1)
+                    args = (None, conn0, None, None, i),
+                    mp.Process(target=Generator(self.env, self.args).run, args=args).start()
+                self.conns = server_conns
+            self.server()
 
         print('\nmeta tree size = %d episodes = %d' % (len(self.tree), len(self.episodes)))
 
