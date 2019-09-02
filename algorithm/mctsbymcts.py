@@ -65,7 +65,7 @@ class Generator(BaseGenerator):
         if isinstance(destination, mp.connection.Connection):
             # server-client mode
             conn = destination
-            conn.send((process_id, [], None))
+            conn.send((process_id, '', None))
             while True:
                 path = conn.recv()
                 if path is None:
@@ -159,6 +159,8 @@ class Trainer(BaseTrainer):
                     sent += 1
                     print(g, '', end='', flush=True)
                     g += 1
+                else:
+                    break
 
         for conn in conns:
             conn.send(None) # stop request
