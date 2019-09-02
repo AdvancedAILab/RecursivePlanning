@@ -1,6 +1,8 @@
-  
-# Agent Class
 
+# Agent Class and Evaluation
+
+import pickle
+import multiprocessing as mp
 import numpy as np
 
 class RandomAgent:
@@ -28,6 +30,7 @@ class SoftAgent(Agent):
         p = (p + 1e-16) * mask
         return np.random.choice(np.arange(len(p)), p=p/p.sum())
 
+
 def do_match(env, agents):
     state = env.State()
     turn = 0
@@ -39,8 +42,7 @@ def do_match(env, agents):
     reward = state.reward(subjective=False)
     return reward
 
-def evaluate_process(args):
-    env, agents, flip, n, process_id, num_process = args
+def evaluate(env, agents, flip, n, process_id, num_process):
     rewards = []
     for i in range(process_id, n, num_process):
         if not flip or i % 2 == 0:
@@ -51,20 +53,46 @@ def evaluate_process(args):
         rewards.append(reward)
     return rewards
 
-def evaluate(env, agents, flip, n, num_process=1):
-    if num_process == 1:
-        results = evaluate_process((env, agents, flip, n, 0, 1))
-    else:
-        import multiprocessing as mp
-        with mp.Pool(num_process) as p:
-            argss = [(env, agents, flip, n, i, num_process) for i in range(num_process)]
-            results = p.map(evaluate_process, argss)
-        results = sum(results, [])
 
-    # gather results
-    distribution = {}
-    for reward in results:
-        if reward not in distribution:
-            distribution[reward] = 0
-        distribution[reward] += 1
-    return distribution
+class Evaluator:
+    def __init__(self, env, args):
+        self.env = env
+        self.args = args
+        self.conns = None
+
+    def run(self, conn):
+        while True:
+            args = pickle.loads(conn.recv())
+            if args is None:
+               break
+            agents = args[0]
+            results = evaluate(self.env, agents, *args[1:])
+            conn.send(results)
+
+    def start(self, agents, flip, n):
+        process = self.args['num_eval_process']
+        if process == 1:
+            results = evaluate(self.env, agents, flip, n, 0, 1)
+        else:
+            if self.conns is None:
+                server_conns = []
+                for i in range(process):
+                    conn0, conn1 = mp.Pipe(duplex=True)
+                    server_conns.append(conn1)
+                    mp.Process(target=self.run, args=([conn0])).start()
+                self.conns = server_conns
+
+            for i, conn in enumerate(self.conns):
+                conn.send(pickle.dumps((agents, flip, n, i, process)))
+
+            results = []
+            for conn in self.conns:
+                results.extend(conn.recv())
+
+        # gather results
+        distribution = {}
+        for reward in results:
+            if reward not in distribution:
+                distribution[reward] = 0
+            distribution[reward] += 1
+        return dict(sorted(distribution.items(), reverse=True))
