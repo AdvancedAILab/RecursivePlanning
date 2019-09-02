@@ -159,8 +159,6 @@ class Trainer(BaseTrainer):
                     sent += 1
                     print(g, '', end='', flush=True)
                     g += 1
-                else:
-                    break
 
         for conn in conns:
             conn.send(None) # stop request
