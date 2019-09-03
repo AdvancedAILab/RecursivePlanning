@@ -1,7 +1,7 @@
  
 # Monte Carlo Tree Search by Monte Carlo Tree Search
 
-import time, copy, pickle
+import time, copy
 import multiprocessing as mp
 import numpy as np
 import torch
@@ -66,7 +66,7 @@ class Generator(BaseGenerator):
             # server-client mode
             conn = destination
             while True:
-                nets = pickle.loads(conn.recv())
+                nets = conn.recv()
                 if nets is None:
                     break
                 conn.send((process_id, '', None))
@@ -146,7 +146,7 @@ class Trainer(BaseTrainer):
         num_episodes, sent = 0, 0
 
         for conn in self.conns:
-            conn.send(pickle.dumps(self.nets))
+            conn.send(self.nets)
 
         while num_episodes < self.args['num_train_steps']:
             # receive results from generators
