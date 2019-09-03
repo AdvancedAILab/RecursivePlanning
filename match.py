@@ -1,7 +1,6 @@
 
 # Agent Class and Evaluation
 
-import pickle
 import multiprocessing as mp
 import numpy as np
 
@@ -62,7 +61,7 @@ class Evaluator:
 
     def run(self, conn):
         while True:
-            args = pickle.loads(conn.recv())
+            args = conn.recv()
             if args is None:
                break
             agents = args[0]
@@ -83,7 +82,7 @@ class Evaluator:
                 self.conns = server_conns
 
             for i, conn in enumerate(self.conns):
-                conn.send(pickle.dumps((agents, flip, n, i, process)))
+                conn.send((agents, flip, n, i, process))
 
             results = []
             for conn in self.conns:
