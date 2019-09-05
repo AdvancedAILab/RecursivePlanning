@@ -13,6 +13,7 @@ import torch.optim as optim
 # domain dependent nets
 
 from .board2d import Encoder, Decoder
+from .bandit import *
 
 # encoder   ... (domain dependent) feature -> dependent
 # decoder   ... (domain dependent) encoded -> p, v
@@ -42,9 +43,12 @@ class Node:
         self.p, self.v = outputs['policy'], outputs['value']
         self.q_sum, self.n = np.zeros_like(self.p), np.zeros_like(self.p)
         self.q_sum_all, self.n_all = 0, 0
-        self.action_mask = np.ones_like(self.p) * 1e32
-        for a in state.legal_actions():
-            self.action_mask[a] = 0
+        mask = np.zeros_like(self.p)
+        mask[state.legal_actions()] = 1
+        self.action_mask = (1 - mask) * 1e32
+
+        self.p = (self.p + 1e-16) * mask
+        self.p /= self.p.sum()
 
     def update(self, action, q_new):
         self.n[action] += 1
@@ -61,17 +65,16 @@ class Node:
         p = self.p
         if depth == 0:
             p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
+            p /= p.sum()
 
-        # pucb
-        q_sum_all, n_all = self.q_sum_all + self.v / 2, self.n_all + 1
-        q = (q_sum_all / n_all + self.q_sum) / (1 + self.n)
-        ucb = q + 2.0 * np.sqrt(n_all) * p / (self.n + 1) - self.action_mask
-        action = np.argmax(ucb)
+        # apply bandit
+        #action, info = pucb(self, p)
+        action, info = pthompson(self, p)
 
         self.n[action] += vloss
         self.q_sum[action] += vloss * -1
 
-        return action, ucb
+        return action, info
 
     def remove_vloss(self, action):
         self.n[action] -= vloss
