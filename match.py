@@ -58,12 +58,16 @@ class Evaluator:
         self.env = env
         self.args = args
         self.conns = None
+        self.process_id = None
 
     def run(self, conn):
         while True:
             args = conn.recv()
             if args is None:
                break
+            if self.process_id is None:
+                self.process_id = args[-2]
+                np.random.seed(self.process_id)
             agents = args[0]
             results = evaluate(self.env, agents, *args[1:])
             conn.send(results)
