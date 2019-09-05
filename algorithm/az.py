@@ -61,15 +61,17 @@ class Node:
     def best(self):
         return int(np.argmax(self.n))
 
-    def bandit(self, depth):
+    def bandit(self, depth, method):
         p = self.p
         if depth == 0:
             p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
             p /= p.sum()
 
         # apply bandit
-        #action, info = pucb(self, p)
-        action, info = pthompson(self, p)
+        if method == 'u':
+            action, info = pucb(self, p)
+        else:
+            action, info = pthompson(self, p)
 
         self.n[action] += vloss
         self.q_sum[action] += vloss * -1
@@ -81,8 +83,9 @@ class Node:
         self.q_sum[action] -= vloss * -1
 
 class Planner:
-    def __init__(self, nets):
+    def __init__(self, nets, args):
         self.nets = nets
+        self.args = args
         self.clear()
 
     def clear(self):
@@ -105,7 +108,7 @@ class Planner:
             return node.v
 
         node = self.node[key]
-        best_action, _ = node.bandit(depth)
+        best_action, _ = node.bandit(depth, self.args['bandit'])
 
         state.play(best_action)
         q_new = -self.search(state, depth + 1)
@@ -136,11 +139,19 @@ class Planner:
                              root.n[root.best()], root.n_all))
 
         root = self.node[str(state)]
-        n = (root.n / np.max(root.n)) ** (1 / (temperature + 1e-8))
-        n = np.maximum(n - root.action_mask, 0) # mask invalid actions
+
+        if self.args['posterior'] == 'n':
+            n = (root.n / np.max(root.n)) ** (1 / (temperature + 1e-8))
+            n = np.maximum(n - root.action_mask, 0) # mask invalid actions
+            posterior = n / n.sum()
+        else:
+            posterior = thompson_posterior(root, 4)
+            #print('prior = ', root.p)
+            #print('count = ', root.n)
+            #print('posterior = ', posterior)
 
         return {
-            'policy': n / n.sum(),
+            'policy': posterior,
             'value': root.q_sum_all / root.n_all
         } 
 
@@ -161,7 +172,7 @@ class Generator:
         record, ps, vs = [], [], []
         state = self.env.State()
         guide = state.str2path(guide)
-        planner = Planner(nets)
+        planner = Planner(nets, self.args)
         temperature = 0.7
         while not state.terminal():
             outputs = planner.inference(state, self.args['num_simulations'], temperature)
