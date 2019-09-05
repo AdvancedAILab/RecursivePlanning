@@ -64,6 +64,7 @@ class Generator(BaseGenerator):
         nets, destination, st, n, process_id = args
         if isinstance(destination, mp.connection.Connection):
             # server-client mode
+            np.random.seed(process_id)
             conn = destination
             while True:
                 nets = conn.recv()

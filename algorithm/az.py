@@ -164,6 +164,7 @@ class Generator:
 
     def run(self, args):
         nets, _, st, n, process_id, num_process = args
+        np.random.seed(process_id)
         episodes = []
         for g in range(st + process_id, st + n, num_process):
             print(g, '', end='', flush=True)
