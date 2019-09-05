@@ -150,7 +150,6 @@ class Planner:
             #print('count = ', root.n)
             #print('posterior = ', posterior)
         v = np.dot(posterior, mean(root, 1))
-        print(v)
 
         return {
             'policy': posterior,
