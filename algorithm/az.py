@@ -149,11 +149,13 @@ class Planner:
             #print('prior = ', root.p)
             #print('count = ', root.n)
             #print('posterior = ', posterior)
+        v = np.dot(posterior, mean(root, 1))
+        print(v)
 
         return {
             'policy': posterior,
-            'value': root.q_sum_all / root.n_all
-        } 
+            'value': v,
+        }
 
 class Generator:
     def __init__(self, env, args):

@@ -3,10 +3,6 @@
 
 import numpy as np
 
-def mask_p(p, mask):
-    p = (p + 1e-16) *mask
-    return p / p.sum() 
-
 def pucb(s, p):
     q_sum_all, n_all = s.q_sum_all + s.v / 2, s.n_all + 1
     q = (q_sum_all / n_all + s.q_sum) / (1 + s.n)
@@ -40,6 +36,11 @@ def pthompson(s, p):
             ba = a
             p_sum += p_mod[a]
     return ba, None
+
+def mean(s, n_prior):
+    q_sum_all, n_all = s.q_sum_all + s.v / 2 * n_prior, s.n_all + n_prior
+    q_sum, n = s.q_sum + q_sum_all / n_all * n_prior, s.n + n_prior # for n + n_prior games
+    return q_sum / n
 
 def thompson_posterior(s, n_prior):
     alpha, beta = prepare_thompson(s, n_prior)
