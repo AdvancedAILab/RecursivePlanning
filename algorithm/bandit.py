@@ -7,15 +7,14 @@ def pucb(s, p):
     q_sum_all, n_all = s.q_sum_all + s.v / 2, s.n_all + 1
     q = (q_sum_all / n_all + s.q_sum) / (1 + s.n)
     pucb = q + 2.0 * np.sqrt(n_all) * p / (s.n + 1) - s.action_mask
-    action = np.argmax(pucb)
-    return action, pucb
+    return np.argmax(pucb), pucb
 
 def prepare_thompson(s, n_prior=1):
     q_sum_all, n_all = s.q_sum_all + s.v / 2 * n_prior, s.n_all + n_prior
     q_sum, n = s.q_sum + q_sum_all / n_all * n_prior, s.n + n_prior # for n + n_prior games
     q01_sum = (q_sum + n) / 2
     alpha, beta = q01_sum, n - q01_sum + s.action_mask
-    return alpha, beta
+    return np.maximum(alpha, 1e-16), np.maximum(beta, 1e-16)
 
 def thompson(s, n_prior=1):
     alpha, beta = prepare_thompson(s, n_prior)

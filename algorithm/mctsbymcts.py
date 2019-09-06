@@ -247,7 +247,8 @@ class Trainer(BaseTrainer):
         for a in ep[0][:turn_idx]:
             state.play(a)
         p = ep[2][turn_idx]
-        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        #v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        v = ep[-1][turn_idx]
 
         # use result in meta-tree if found
         key = str(state)
@@ -255,6 +256,6 @@ class Trainer(BaseTrainer):
             node = self.tree[key]
             if node.n_all > 0:
                 p = node.p
-                v = node.ro_sum_all / node.n_all
+                v = node.v #node.ro_sum_all / node.n_all
 
         return state.feature(), p, [v]
