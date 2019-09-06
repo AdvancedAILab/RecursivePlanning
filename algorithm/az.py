@@ -141,18 +141,16 @@ class Planner:
         root = self.node[str(state)]
 
         if self.args['posterior'] == 'n':
-            n = (root.n / np.max(root.n)) ** (1 / (temperature + 1e-8))
-            n = np.maximum(n - root.action_mask, 0) # mask invalid actions
-            posterior = n / n.sum()
+            posterior = root.n / root.n.sum()
         else:
             posterior = thompson_posterior(root, 4)
-            #print('prior = ', root.p)
-            #print('count = ', root.n)
-            #print('posterior = ', posterior)
-        v = np.dot(posterior, mean(root, 1))
+        posterior = (posterior / posterior.max()) ** (1 / (temperature + 1e-4))
+
+        policy = posterior / posterior.sum()
+        v = np.dot(policy, mean(root, 0.1))
 
         return {
-            'policy': posterior,
+            'policy': policy,
             'value': v,
         }
 
@@ -265,7 +263,8 @@ class Trainer:
         state = self.env.State()
         for a in ep[0][:turn_idx]:
             state.play(a)
-        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        #v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        v = ep[-1][turn_idx]
         return state.feature(), ep[2][turn_idx], [v]
 
     def run(self, callback=None):

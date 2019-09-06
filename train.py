@@ -1,8 +1,8 @@
 import gamegym as gym
 from match import RandomAgent, Agent, SoftAgent, Evaluator
 
-from algorithm.az import Nets, Planner, Trainer
-#from algorithm.mctsbymcts import Nets, Planner, Trainer
+#from algorithm.az import Nets, Planner, Trainer
+from algorithm.mctsbymcts import Nets, Planner, Trainer
 
 args = {
     'batch_size': 64,
@@ -17,6 +17,8 @@ args = {
     'meta_bandit': 'u',
     'posterior': 't', # n:count, 't':Thompson
 }
+
+print(args)
 
 env = gym.make('TicTacToe')
 #env = gym.make('Reversi')
