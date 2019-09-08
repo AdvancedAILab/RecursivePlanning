@@ -24,7 +24,7 @@ def thompson(s, n_prior=1):
 def pthompson(s, p):
     if s.n_all == 0:
         return np.random.choice(np.arange(len(p)), p=p), None
-    p_mod =p / np.max(s.p)
+    p_mod = p / np.max(s.p)
     p_sum, ba = 0, None
     for _ in range(16):
         a, _ = thompson(s, 4)
@@ -49,3 +49,8 @@ def thompson_posterior(s, n_prior):
         r = np.random.beta(alpha, beta)
         posterior[np.argmax(r)] += 1
     return posterior / samples
+
+def pthompson_posterior(s, n_prior):
+    tposterior = thompson_posterior(s, n_prior)
+    posterior = s.p * tposterior
+    return posterior / posterior.sum()
