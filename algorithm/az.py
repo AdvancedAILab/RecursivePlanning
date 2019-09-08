@@ -263,8 +263,8 @@ class Trainer:
         state = self.env.State()
         for a in ep[0][:turn_idx]:
             state.play(a)
-        #v = ep[1] if turn_idx % 2 == 0 else -ep[1]
-        v = ep[-1][turn_idx]
+        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        #v = ep[-1][turn_idx]
         return state.feature(), ep[2][turn_idx], [v]
 
     def run(self, callback=None):
