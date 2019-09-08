@@ -14,7 +14,7 @@ args = {
     'num_eval_process': 7,
     'concurrent_train': True,
     'bandit': 't', # u:UCB, t:Thompson
-    'meta_bandit': 'u',
+    'meta_bandit': 'u', # u:UCB, t:Thompson
     'posterior': 't', # n:count, 't':Thompson
 }
 
