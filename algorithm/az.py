@@ -143,7 +143,7 @@ class Planner:
         if self.args['posterior'] == 'n':
             posterior = root.n / root.n.sum()
         else:
-            posterior = thompson_posterior(root, 4)
+            posterior = pthompson_posterior(root, 4)
         posterior = (posterior / posterior.max()) ** (1 / (temperature + 1e-4))
 
         policy = posterior / posterior.sum()
