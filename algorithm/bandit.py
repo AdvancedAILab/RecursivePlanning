@@ -52,5 +52,5 @@ def thompson_posterior(s, n_prior):
 
 def pthompson_posterior(s, n_prior):
     tposterior = thompson_posterior(s, n_prior)
-    posterior = s.p * tposterior
+    posterior = np.maximum(s.p * tposterior + 1e-16 - s.action_mask, 0)
     return posterior / posterior.sum()
