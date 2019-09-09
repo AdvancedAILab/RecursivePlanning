@@ -17,7 +17,7 @@ Currently, configurations are direcly written in train.py.
 
 ### az.py AlphaZero
 
-basic algorithm of combining resinforcement learning and tree search
+basic algorithm of combining reinforcement learning and tree search
 
 ### mctsbymcts.py
 
