@@ -1,7 +1,7 @@
 # RecursivePlanning
 research repository for recursive planning by neural net
 
-## preparation 
+## preparation
 
 git clone https://github.com/advancedailab/RecursivePlanning --recursive
 cd RecursivePlanning
@@ -21,4 +21,4 @@ basic algorithm of combining resinforcement learning and tree search
 
 ### mctsbymcts.py
 
-managing meta tree to conduct episode generation for steady improveness 
+managing meta tree to conduct episode generation for steady improveness
