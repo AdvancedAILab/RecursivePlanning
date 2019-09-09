@@ -13,6 +13,7 @@ import torch.optim as optim
 # domain dependent nets
 
 from .board2d import Encoder, Decoder
+from .bandit import *
 
 # encoder   ... (domain dependent) feature -> dependent
 # decoder   ... (domain dependent) encoded -> p, v
@@ -42,9 +43,12 @@ class Node:
         self.p, self.v = outputs['policy'], outputs['value']
         self.q_sum, self.n = np.zeros_like(self.p), np.zeros_like(self.p)
         self.q_sum_all, self.n_all = 0, 0
-        self.action_mask = np.ones_like(self.p) * 1e32
-        for a in state.legal_actions():
-            self.action_mask[a] = 0
+        mask = np.zeros_like(self.p)
+        mask[state.legal_actions()] = 1
+        self.action_mask = (1 - mask) * 1e32
+
+        self.p = (self.p + 1e-16) * mask
+        self.p /= self.p.sum()
 
     def update(self, action, q_new):
         self.n[action] += 1
@@ -57,29 +61,31 @@ class Node:
     def best(self):
         return int(np.argmax(self.n))
 
-    def bandit(self, depth):
+    def bandit(self, depth, method):
         p = self.p
         if depth == 0:
             p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
+            p /= p.sum()
 
-        # pucb
-        q_sum_all, n_all = self.q_sum_all + self.v / 2, self.n_all + 1
-        q = (q_sum_all / n_all + self.q_sum) / (1 + self.n)
-        ucb = q + 2.0 * np.sqrt(n_all) * p / (self.n + 1) - self.action_mask
-        action = np.argmax(ucb)
+        # apply bandit
+        if method == 'u':
+            action, info = pucb(self, p)
+        else:
+            action, info = pthompson(self, p)
 
         self.n[action] += vloss
         self.q_sum[action] += vloss * -1
 
-        return action, ucb
+        return action, info
 
     def remove_vloss(self, action):
         self.n[action] -= vloss
         self.q_sum[action] -= vloss * -1
 
 class Planner:
-    def __init__(self, nets):
+    def __init__(self, nets, args):
         self.nets = nets
+        self.args = args
         self.clear()
 
     def clear(self):
@@ -102,7 +108,7 @@ class Planner:
             return node.v
 
         node = self.node[key]
-        best_action, _ = node.bandit(depth)
+        best_action, _ = node.bandit(depth, self.args['bandit'])
 
         state.play(best_action)
         q_new = -self.search(state, depth + 1)
@@ -133,13 +139,20 @@ class Planner:
                              root.n[root.best()], root.n_all))
 
         root = self.node[str(state)]
-        n = (root.n / np.max(root.n)) ** (1 / (temperature + 1e-8))
-        n = np.maximum(n - root.action_mask, 0) # mask invalid actions
+
+        if self.args['posterior'] == 'n':
+            posterior = root.n / root.n.sum()
+        else:
+            posterior = pthompson_posterior(root, 4)
+        posterior = (posterior / posterior.max()) ** (1 / (temperature + 1e-4))
+
+        policy = posterior / posterior.sum()
+        v = np.dot(policy, mean(root, 0.1))
 
         return {
-            'policy': n / n.sum(),
-            'value': root.q_sum_all / root.n_all
-        } 
+            'policy': policy,
+            'value': v,
+        }
 
 class Generator:
     def __init__(self, env, args):
@@ -159,7 +172,7 @@ class Generator:
         record, ps, vs = [], [], []
         state = self.env.State()
         guide = state.str2path(guide)
-        planner = Planner(nets)
+        planner = Planner(nets, self.args)
         temperature = 0.7
         while not state.terminal():
             outputs = planner.inference(state, self.args['num_simulations'], temperature)
@@ -251,6 +264,7 @@ class Trainer:
         for a in ep[0][:turn_idx]:
             state.play(a)
         v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        #v = ep[-1][turn_idx]
         return state.feature(), ep[2][turn_idx], [v]
 
     def run(self, callback=None):
