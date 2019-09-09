@@ -3,8 +3,8 @@ research repository for recursive planning by neural net
 
 ## preparation
 
-git clone https://github.com/advancedailab/RecursivePlanning --recursive
-cd RecursivePlanning
+git clone https://github.com/advancedailab/RecursivePlanning --recursive  
+cd RecursivePlanning  
 ./build.sh
 
 ## experiment
