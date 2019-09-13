@@ -252,9 +252,10 @@ class Trainer:
             optimizer.step()
 
         print('p_loss %f v_loss %f' % (p_loss_sum / dcnt, v_loss_sum / dcnt))
-        for net in nets.values():
-            net.cpu()
-        self.nets = nets
+        if not np.isnan(p_loss_sum):
+            for net in nets.values():
+                net.cpu()
+            self.nets = nets
 
     def notime_planner(self, nets):
         return nets
