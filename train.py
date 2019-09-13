@@ -6,9 +6,9 @@ from algorithm.mctsbymcts import Nets, Planner, Trainer
 
 args = {
     'batch_size': 64,
-    'num_epochs': 30,
+    'num_epochs': 120,
     'num_games': 999000,
-    'num_train_steps': 120,
+    'num_train_steps': 30,
     'num_simulations': 50,
     'num_process': 7,
     'num_eval_process': 7,
