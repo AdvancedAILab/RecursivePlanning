@@ -10,7 +10,7 @@ def pucb(s, p):
     return np.argmax(pucb), pucb
 
 def prepare_thompson(s, n_prior=1):
-    q_sum_all, n_all = s.q_sum_all + s.v / 2 * n_prior, s.n_all + n_prior
+    q_sum_all, n_all = s.q_sum_all + s.v * n_prior, s.n_all + n_prior
     q_sum, n = s.q_sum + q_sum_all / n_all * n_prior, s.n + n_prior # for n + n_prior games
     q01_sum = (q_sum + n) / 2
     alpha, beta = q01_sum, n - q01_sum + s.action_mask
@@ -24,7 +24,7 @@ def thompson(s, n_prior=1):
 def pthompson(s, p):
     if s.n_all == 0:
         return np.random.choice(np.arange(len(p)), p=p), None
-    p_mod = p / np.max(s.p)
+    p_mod = p / np.max(p)
     p_sum, ba = 0, None
     for _ in range(16):
         a, _ = thompson(s, 4)
@@ -52,5 +52,5 @@ def thompson_posterior(s, n_prior):
 
 def pthompson_posterior(s, n_prior):
     tposterior = thompson_posterior(s, n_prior)
-    posterior = s.p * tposterior
+    posterior = np.maximum(s.p * tposterior + 1e-16 - s.action_mask, 0)
     return posterior / posterior.sum()

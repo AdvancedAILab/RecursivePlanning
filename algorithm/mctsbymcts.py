@@ -210,6 +210,7 @@ class Trainer(BaseTrainer):
             node = self.tree[key]
             if node.n_all > 0:
                 p = node.p
-                v = node.v #node.ro_sum_all / node.n_all
+                v = node.ro_sum_all / node.n_all
+                # v = node.v
 
         return state.feature(), p, [v]

@@ -1,4 +1,4 @@
-  
+
 # Alpha Zero
 
 import time, copy
@@ -227,33 +227,35 @@ class Trainer:
 
         optimizer = optim.SGD(params, lr=1e-3, weight_decay=1e-4, momentum=0.75)
 
-        for _ in range(self.args['num_epochs']):
-            if self.stop_train:
+        p_loss_sum, v_loss_sum = 0, 0
+        max_datum = self.args['num_epochs'] * len(self.episodes)
+        for dcnt in range(0, max_datum, self.args['batch_size']):
+            if dcnt > 0 and self.stop_train:
                 break
-            p_loss_sum, v_loss_sum = 0, 0
-            for _ in range(0, len(self.episodes), self.args['batch_size']):
-                ep_idx = dice.randint(len(self.episodes), size=(self.args['batch_size']))
-                x, p_target, v_target = zip(*[gen(self.episodes[idx], dice) for idx in ep_idx])
 
-                x = torch.FloatTensor(np.array(x)).to(device).contiguous()
-                p_target = torch.FloatTensor(np.array(p_target)).to(device).contiguous()
-                v_target = torch.FloatTensor(np.array(v_target)).to(device).contiguous()
+            ep_idx = dice.randint(len(self.episodes), size=self.args['batch_size'])
+            x, p_target, v_target = zip(*[gen(self.episodes[idx], dice) for idx in ep_idx])
 
-                o = nets(x)
-                p_loss = torch.sum(p_target * torch.log(torch.clamp(p_target, 1e-12, 1) / torch.clamp(o['policy'], 1e-12, 1)))
-                v_loss = torch.sum((v_target - o['value']) ** 2)
+            x = torch.FloatTensor(np.array(x)).to(device).contiguous()
+            p_target = torch.FloatTensor(np.array(p_target)).to(device).contiguous()
+            v_target = torch.FloatTensor(np.array(v_target)).to(device).contiguous()
 
-                p_loss_sum += p_loss.item()
-                v_loss_sum += v_loss.item()
+            o = nets(x)
+            p_loss = torch.sum(p_target * torch.log(torch.clamp(p_target, 1e-12, 1) / torch.clamp(o['policy'], 1e-12, 1)))
+            v_loss = torch.sum((v_target - o['value']) ** 2)
 
-                optimizer.zero_grad()
-                (p_loss + v_loss).backward()
-                optimizer.step()
+            p_loss_sum += p_loss.item()
+            v_loss_sum += v_loss.item()
 
-        print('p_loss %f v_loss %f' % (p_loss_sum / len(self.episodes), v_loss_sum / len(self.episodes)))
-        for net in nets.values():
-            net.cpu()
-        self.nets = nets
+            optimizer.zero_grad()
+            (p_loss + v_loss).backward()
+            optimizer.step()
+
+        print('p_loss %f v_loss %f' % (p_loss_sum / dcnt, v_loss_sum / dcnt))
+        if not np.isnan(p_loss_sum):
+            for net in nets.values():
+                net.cpu()
+            self.nets = nets
 
     def notime_planner(self, nets):
         return nets
