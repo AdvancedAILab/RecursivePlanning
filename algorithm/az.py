@@ -225,7 +225,7 @@ class Trainer:
             episodes = sum(episodes, [])
         for ep in episodes:
             self.feed_episode(ep)
-        print('\nepisodes = %d' % (len(self.tree), len(self.episodes)))
+        print('\nepisodes = %d' % len(self.episodes))
 
     def train(self, gen, dice):
         #nets, params = Nets(self.env), []
