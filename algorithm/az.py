@@ -66,10 +66,15 @@ class Node:
         if depth == 0:
             p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
             p /= p.sum()
+        elif depth == -1:
+            p = p + 0.1
+            p /= p.sum()
 
         # apply bandit
         if method == 'u':
             action, info = pucb(self, p)
+        elif method == 'r':
+            action, info = ucbroot(self, p)
         else:
             action, info = pthompson(self, p)
 
@@ -220,6 +225,7 @@ class Trainer:
             episodes = sum(episodes, [])
         for ep in episodes:
             self.feed_episode(ep)
+        print('\nepisodes = %d' % (len(self.tree), len(self.episodes)))
 
     def train(self, gen, dice):
         #nets, params = Nets(self.env), []
