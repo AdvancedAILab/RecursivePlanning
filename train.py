@@ -38,10 +38,7 @@ default_args = {
 
 parser = argparse.ArgumentParser()
 for k, v in default_args.items():
-    if v is None:
-        parser.add_argument('--' + k, default=v)
-    else:
-        parser.add_argument('--' + k, default=v, type=type(v))
+    parser.add_argument('--' + k, default=v, type=None if v is None else type(v))
 
 args = vars(parser.parse_args())
 print(args)
