@@ -25,6 +25,9 @@ default_args = {
     'num_epochs': 100,
     'learning_rate': 1e-3,
 
+    # tree search
+    'cuct': 2.0,
+
     # episode generation
     'num_simulations': 100,
     'net_cache_extention': 0, 
