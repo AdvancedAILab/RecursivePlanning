@@ -28,7 +28,7 @@ default_args = {
     # episode generation
     'num_simulations': 100,
     'net_cache_extention': 0, 
-    'temperature': 0.7,
+    'temperature': 0.8,
     'temp_decay': 0.8,
 
     # experimental settings
