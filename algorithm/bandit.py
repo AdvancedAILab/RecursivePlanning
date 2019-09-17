@@ -9,6 +9,12 @@ def pucb(s, p):
     pucb = q + 2.0 * np.sqrt(n_all) * p / (s.n + 1) - s.action_mask
     return np.argmax(pucb), pucb
 
+def ucbroot(s, p):
+    q_sum_all, n_all = s.q_sum_all + s.v / 2, s.n_all + 1
+    q = (q_sum_all / n_all + s.q_sum) / (1 + s.n)
+    ucbroot = q + 2.0 * p * np.sqrt(np.sqrt(n_all) / (s.n + 1)) - s.action_mask
+    return np.argmax(ucbroot), ucbroot
+
 def prepare_thompson(s, n_prior=1):
     q_sum_all, n_all = s.q_sum_all + s.v * n_prior, s.n_all + n_prior
     q_sum, n = s.q_sum + q_sum_all / n_all * n_prior, s.n + n_prior # for n + n_prior games
