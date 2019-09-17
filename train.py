@@ -19,14 +19,12 @@ default_args = {
     'bandit': 'u', # u:UCB, t:Thompson
     'meta_bandit': 'u', # u:UCB, t:Thompson
     'posterior': 'n', # n:count, 't':Thompson
+    'meta_p_randomization': True,
   
     # fitting neural nets
     'batch_size': 64,
     'num_epochs': 100,
     'learning_rate': 1e-3,
-
-    # tree search
-    'cuct': 2.0,
 
     # episode generation
     'num_simulations': 100,

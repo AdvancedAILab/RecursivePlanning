@@ -99,7 +99,8 @@ class Trainer(BaseTrainer):
 
         while str(state) in self.tree:
             node = self.tree[str(state)]
-            action, _ = node.bandit(-1, self.args['meta_bandit'])
+            depth = 0 if self.args['meta_p_randomization'] else -1
+            action, _ = node.bandit(depth, self.args['meta_bandit'])
             state.play(action)
 
         return state.record_string()
