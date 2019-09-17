@@ -99,7 +99,7 @@ class Planner:
         key = str(state)
         if key not in self.node:
             if key in self.store:
-                self.bonus += 0.5
+                self.extention += self.args['net_cache_extention']
                 outputs = self.store[key]
             else:
                 outputs = self.nets.inference(state)
@@ -121,9 +121,9 @@ class Planner:
             print(state)
         start, prev_time = time.time(), 0
         self.node = {}
-        self.bonus = 0
+        self.extention = 0
         cnt = 0
-        while cnt < num_simulations + self.bonus:
+        while cnt < num_simulations + self.extention:
             self.search(state.copy(), 0)
             cnt += 1
 
@@ -173,7 +173,7 @@ class Generator:
         state = self.env.State()
         guide = state.str2path(guide)
         planner = Planner(nets, self.args)
-        temperature = 0.7
+        temperature = self.args['temperature']
         while not state.terminal():
             outputs = planner.inference(state, self.args['num_simulations'], temperature)
             policy = outputs['policy']
@@ -185,7 +185,7 @@ class Generator:
             record.append(action)
             ps.append(policy)
             vs.append(outputs['value'])
-            temperature *= 0.8
+            temperature *= self.args['temp_decay']
         reward = state.reward(subjective=False)
         return record, reward, ps, vs
 
@@ -196,6 +196,10 @@ class Trainer:
         self.nets = None
         self.episodes = []
         self.reward_distribution = {}
+        self.seed = int(self.args['seed'])
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
 
     def feed_episode(self, episode):
         # update stats
@@ -225,7 +229,7 @@ class Trainer:
             net.train().to(device)
             params.extend(list(net.parameters()))
 
-        optimizer = optim.SGD(params, lr=1e-3, weight_decay=1e-4, momentum=0.75)
+        optimizer = optim.SGD(params, lr=self.args['learning_rate'], weight_decay=1e-4, momentum=0.75)
 
         p_loss_sum, v_loss_sum = 0, 0
         max_datum = self.args['num_epochs'] * len(self.episodes)
@@ -275,6 +279,8 @@ class Trainer:
         dice_train = np.random.RandomState(123)
 
         for g in range(0, self.args['num_games'], self.args['num_train_steps']):
+            current_nets = copy.deepcopy(self.nets)
+
             if g > 0:
                 # start training
                 self.stop_train = False
@@ -285,7 +291,7 @@ class Trainer:
                     self.train(self.gen_target, dice_train)
 
             if callback is not None:
-                callback(self.env, self.notime_planner(copy.deepcopy(self.nets)))
+                callback(self.env, self.notime_planner(current_nets))
 
             # episode generation
             self.generation_starter(self.nets, g)

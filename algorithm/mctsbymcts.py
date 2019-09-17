@@ -99,7 +99,7 @@ class Trainer(BaseTrainer):
 
         while str(state) in self.tree:
             node = self.tree[str(state)]
-            action, _ = node.bandit(0, self.args['meta_bandit'])
+            action, _ = node.bandit(1, self.args['meta_bandit'])
             state.play(action)
 
         return state.record_string()
@@ -239,7 +239,8 @@ class Trainer(BaseTrainer):
     def notime_planner(self, nets):
         book = Book(self.tree)
         booknets = BookNets(book, nets)
-        return booknets
+        #return booknets
+        return nets
 
     def gen_target(self, ep, dice):
         turn_idx = dice.randint(len(ep[0]))
