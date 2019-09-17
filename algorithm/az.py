@@ -66,6 +66,9 @@ class Node:
         if depth == 0:
             p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
             p /= p.sum()
+        elif depth == -1:
+            p = p + 0.1
+            p /= p.sum()
 
         # apply bandit
         if method == 'u':
