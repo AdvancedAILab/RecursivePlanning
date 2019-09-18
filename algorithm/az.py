@@ -201,8 +201,9 @@ class Trainer:
         self.nets = None
         self.episodes = []
         self.reward_distribution = {}
-        self.seed = int(self.args['seed'])
+        self.seed = self.args['seed']
         if self.seed is not None:
+            self.seed = int(self.seed)
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
