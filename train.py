@@ -1,7 +1,7 @@
 import argparse
 
 import gamegym as gym
-from match import RandomAgent, Agent, SoftAgent, Evaluator
+from match import RandomAgent, PerfectAgent, Agent, SoftAgent, Evaluator
 
 default_args = {
     # algorithm
@@ -50,6 +50,10 @@ def evaluation(env, planner):
     # vs random
     agents = [Agent(planner), RandomAgent()]
     print('rand= ', evaluator.start(agents, True, 1000))
+    # vs perfect
+    if env.game == 'TicTacToe':
+        agents = [Agent(planner), PerfectAgent()]
+        print('perf= ', evaluator.start(agents, True, 1000))
     # vs myself
     agents = [SoftAgent(planner), SoftAgent(planner)]
     print('self= ', evaluator.start(agents, False, 1000))
