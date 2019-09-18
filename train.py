@@ -14,7 +14,6 @@ default_args = {
     'num_games': 20000,
     'num_train_steps': 100,
     'num_process': 1,
-    'num_eval_process': 1,
     'concurrent_train': False,
     'bandit': 'u', # u:UCB, t:Thompson
     'meta_bandit': 'u', # u:UCB, t:Thompson

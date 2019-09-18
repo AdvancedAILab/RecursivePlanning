@@ -77,7 +77,7 @@ class Evaluator:
             conn.send(results)
 
     def start(self, agents, flip, n):
-        process = self.args['num_eval_process']
+        process = self.args['num_process']
         if process == 1:
             results = evaluate(self.env, agents, flip, n, 0, 1)
         else:
