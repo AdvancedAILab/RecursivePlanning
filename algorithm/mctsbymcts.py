@@ -240,8 +240,7 @@ class Trainer(BaseTrainer):
     def notime_planner(self, nets):
         book = Book(self.tree)
         booknets = BookNets(book, nets)
-        #return booknets
-        return nets
+        return booknets
 
     def gen_target(self, ep, dice):
         turn_idx = dice.randint(len(ep[0]))
