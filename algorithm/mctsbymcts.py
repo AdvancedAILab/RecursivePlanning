@@ -140,8 +140,8 @@ class Trainer(BaseTrainer):
             node.update(action, (v_leaf + q_diff_sum) * direction, reward * direction)
 
             v_old = node.v
-            #alpha = 1 / node.n_all # mean
-            alpha = 2 / (1 + node.n_all) # linear weight
+            alpha = 1 / node.n_all # mean
+            #alpha = 2 / (1 + node.n_all) # linear weight
             node.p = node.p * (1 - alpha) + p * alpha
             node.v = node.v * (1 - alpha) + v * alpha
 
