@@ -45,17 +45,17 @@ print(args)
 env = gym.make(args['env'])
 evaluator = Evaluator(env, args)
 
-def evaluation(env, planner):
+def evaluation(env, planner, name):
     # vs random
     agents = [Agent(planner), RandomAgent()]
-    print('rand= ', evaluator.start(agents, True, 1000))
+    print('%s:rand= %s' % (name, evaluator.start(agents, True, 1000)))
     # vs perfect
     if env.game == 'TicTacToe':
         agents = [Agent(planner), PerfectAgent()]
-        print('perf= ', evaluator.start(agents, True, 1000))
+        print('%s:perf= %s' % (name, evaluator.start(agents, True, 1000)))
     # vs myself
     agents = [SoftAgent(planner), SoftAgent(planner)]
-    print('self= ', evaluator.start(agents, False, 1000))
+    print('%s:self= %s' % (name, evaluator.start(agents, False, 1000)))
 
 if args['algo'] == 'AlphaZero':
     from algorithm.az import Nets, Planner, Trainer
