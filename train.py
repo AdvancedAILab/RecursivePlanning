@@ -11,7 +11,7 @@ default_args = {
     'env': 'TicTacToe',
 
     # system
-    'num_games': 1000000,
+    'num_games': 20000,
     'num_train_steps': 100,
     'num_process': 1,
     'num_eval_process': 1,
@@ -22,8 +22,8 @@ default_args = {
     'meta_p_randomization': True,
   
     # fitting neural nets
-    'batch_size': 64,
-    'num_epochs': 100,
+    'batch_size': 32,
+    'num_epochs': 50,
     'learning_rate': 1e-3,
 
     # episode generation
