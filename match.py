@@ -9,6 +9,10 @@ class RandomAgent:
         # random action
         return np.random.choice(state.legal_actions())
 
+class PerfectAgent:
+    def action(self, state):
+        return np.random.choice(state.best_actions()[0])
+
 class Agent(RandomAgent):
     def __init__(self, model):
         super().__init__()
