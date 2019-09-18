@@ -268,9 +268,6 @@ class Trainer:
                 net.cpu()
             self.nets = nets
 
-    def notime_planner(self, nets):
-        return nets
-
     def gen_target(self, ep, dice):
         turn_idx = dice.randint(len(ep[0]))
         state = self.env.State()
@@ -298,7 +295,9 @@ class Trainer:
                     self.train(self.gen_target, dice_train)
 
             if callback is not None:
-                callback(self.env, self.notime_planner(current_nets))
+                callback(self.env, current_nets, 'net')
+                if 'notime_planner' in dir(self):
+                    callback(self.env, self.notime_planner(current_nets), 'n+t')
 
             # episode generation
             self.generation_starter(self.nets, g)
