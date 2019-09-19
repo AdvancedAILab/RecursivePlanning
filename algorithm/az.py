@@ -200,6 +200,7 @@ class Trainer:
         self.args = args
         self.nets = None
         self.episodes = []
+        self.target_map = {}
         self.reward_distribution = {}
         self.seed = self.args['seed']
         if self.seed is not None:
@@ -211,6 +212,20 @@ class Trainer:
         # update stats
         self.episodes.append(episode)
         reward = episode[1]
+
+        state = self.env.State()
+        for turn_idx, action in enumerate(episode[0]):
+            key = str(state)
+            p, v, n = episode[2][turn_idx], reward, 1
+            if key in self.target_map:
+                e = self.target_map[key]
+                w = 1 / (e[-1] + 1)
+                p = e[0] * (1 - w) + p * w
+                v = e[1] * (1 - w) + v * w
+                n = e[-1] + 1
+            self.target_map[key] = p, v, n
+            state.play(action)
+
         if reward not in self.reward_distribution:
             self.reward_distribution[reward] = 0
         self.reward_distribution[reward] += 1
@@ -273,9 +288,14 @@ class Trainer:
         state = self.env.State()
         for a in ep[0][:turn_idx]:
             state.play(a)
-        v = ep[1] if turn_idx % 2 == 0 else -ep[1]
+        p = ep[2][turn_idx]
+        v = ep[1]
         #v = ep[-1][turn_idx]
-        return state.feature(), ep[2][turn_idx], [v]
+        key = str(state)
+        if key in self.target_map:
+            entry = self.target_map[key]
+            p, v = entry[0], entry[1]
+        return state.feature(), p, [v if turn_idx % 2 == 0 else -v]
 
     def run(self, callback=None):
         self.nets = Nets(self.env)
