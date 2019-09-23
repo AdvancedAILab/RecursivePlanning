@@ -37,7 +37,8 @@ default_args = {
 
 parser = argparse.ArgumentParser()
 for k, v in default_args.items():
-    parser.add_argument('--' + k, default=v, type=None if v is None else type(v))
+    t = None if v is None or isinstance(v, bool) else type(v)
+    parser.add_argument('--' + k, default=v, type=t)
 
 args = vars(parser.parse_args())
 print(args)
