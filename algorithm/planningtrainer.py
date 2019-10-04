@@ -1,5 +1,5 @@
 
-# Alpha Zero
+# Base Implementation of Training Process with Extensible Planning
 
 import time, copy
 import multiprocessing as mp
@@ -15,156 +15,11 @@ import torch.optim as optim
 from .board2d import Encoder, Decoder
 from .bandit import *
 
-# encoder   ... (domain dependent) feature -> dependent
-# decoder   ... (domain dependent) encoded -> p, v
-
-vloss = 4
-
-class Nets(dict):
-    def __init__(self, env):
-        super().__init__({
-            'encoder': Encoder(env),
-            'decoder': Decoder(env)
-        })
-
-    def __call__(self, x):
-        encoded = self['encoder'](x)
-        p, v = self['decoder'](encoded)
-        return {'policy': p, 'value': v}
-
-    def inference(self, state):
-        x = state.feature()
-        encoded = self['encoder'].inference(x)
-        p, v = self['decoder'].inference(encoded)
-        return {'policy': p, 'value': v}
-
-class Node:
-    def __init__(self, state, outputs):
-        self.p, self.v = outputs['policy'], outputs['value']
-        self.q_sum, self.n = np.zeros_like(self.p), np.zeros_like(self.p)
-        self.q_sum_all, self.n_all = 0, 0
-        mask = np.zeros_like(self.p)
-        mask[state.legal_actions()] = 1
-        self.action_mask = (1 - mask) * 1e32
-
-        self.p = (self.p + 1e-16) * mask
-        self.p /= self.p.sum()
-
-    def update(self, action, q_new):
-        self.n[action] += 1
-        self.q_sum[action] += q_new
-        self.n_all += 1
-        self.q_sum_all += q_new
-
-        self.remove_vloss(action)
-
-    def best(self):
-        return int(np.argmax(self.n))
-
-    def bandit(self, depth, method):
-        p = self.p
-        if depth == 0:
-            p = 0.75 * p + 0.25 * np.random.dirichlet(np.ones_like(p) * 0.1)
-            p /= p.sum()
-        elif depth == -1:
-            p = p + 0.1
-            p /= p.sum()
-
-        # apply bandit
-        if method == 'u':
-            action, info = pucb(self, p)
-        elif method == 'r':
-            action, info = ucbroot(self, p)
-        else:
-            action, info = pthompson(self, p)
-
-        self.n[action] += vloss
-        self.q_sum[action] += vloss * -1
-
-        return action, info
-
-    def remove_vloss(self, action):
-        self.n[action] -= vloss
-        self.q_sum[action] -= vloss * -1
-
-class Planner:
-    def __init__(self, nets, args):
-        self.nets = nets
-        self.args = args
-        self.clear()
-
-    def clear(self):
-        self.node = {}
-        self.store = {}
-
-    def search(self, state, depth):
-        if state.terminal():
-            return state.reward(subjective=True)
-
-        key = str(state)
-        if key not in self.node:
-            if key in self.store:
-                self.extention += self.args['net_cache_extention']
-                outputs = self.store[key]
-            else:
-                outputs = self.nets.inference(state)
-                self.store[key] = outputs
-            node = self.node[key] = Node(state, outputs)
-            return node.v
-
-        node = self.node[key]
-        best_action, _ = node.bandit(depth, self.args['bandit'])
-
-        state.play(best_action)
-        q_new = -self.search(state, depth + 1)
-        node.update(best_action, q_new)
-
-        return q_new
-
-    def inference(self, state, **kwargs):
-        num_simulations = kwargs.get('num_simulations', self.args['num_simulations'])
-        temperature = kwargs.get('temperature', 0.0)
-        show = kwargs.get('show', False)
-        if show:
-            print(state)
-        start, prev_time = time.time(), 0
-        self.node = {}
-        self.extention = 0
-        cnt = 0
-        while cnt < num_simulations + self.extention:
-            self.search(state.copy(), 0)
-            cnt += 1
-
-            # show status every 1 second
-            if show:
-                tmp_time = time.time() - start
-                if int(tmp_time) > int(prev_time):
-                    prev_time = tmp_time
-                    root = self.node[str(state)]
-                    print('%.2f sec. best %s. q = %.4f. n = %d / %d'
-                          % (tmp_time, state.action2str(root.best()),
-                             root.q_sum[root.best()] / root.n[root.best()],
-                             root.n[root.best()], root.n_all))
-
-        root = self.node[str(state)]
-
-        if self.args['posterior'] == 'n':
-            posterior = root.n / root.n.sum()
-        else:
-            posterior = pthompson_posterior(root, 4)
-        posterior = (posterior / posterior.max()) ** (1 / (temperature + 1e-4))
-
-        policy = posterior / posterior.sum()
-        v = np.dot(policy, mean(root, 0.1))
-
-        return {
-            'policy': policy,
-            'value': v,
-        }
 
 class Generator:
-    def __init__(self, env, args):
+    def __init__(self, env, planner, args):
         self.env = env
+        self.planner = planner
         self.args = args
 
     def run(self, args):
@@ -180,10 +35,10 @@ class Generator:
         record, ps, vs = [], [], []
         state = self.env.State()
         guide = state.str2path(guide)
-        planner = Planner(nets, self.args)
+        planner = self.planner(nets, self.args)
         temperature = self.args['temperature']
         while not state.terminal():
-            outputs = planner.inference(state, num_simulation=self.args['num_simulations'], temperature=temperature)
+            outputs = planner.inference(state, temperature=temperature)
             policy = outputs['policy']
             if len(record) < len(guide):
                 action = guide[len(record)]
@@ -218,14 +73,14 @@ class Trainer:
             self.reward_distribution[reward] = 0
         self.reward_distribution[reward] += 1
 
-    def generation_starter(self, nets, g):
+    def generation_starter(self, nets, planner, g):
         steps, process = self.args['num_train_steps'], self.args['num_process']
         if process == 1:
-            episodes = Generator(self.env, self.args).run((nets, None, g, steps, 0, 1))
+            episodes = Generator(self.env, planner, self.args).run((nets, None, g, steps, 0, 1))
         else:
             with mp.Pool(process) as p:
                 args_list = [(nets, None, g, steps, i, process) for i in range(process)]
-                episodes = p.map(Generator(self.env, self.args).run, args_list)
+                episodes = p.map(Generator(self.env, planner, self.args).run, args_list)
             episodes = sum(episodes, [])
         for ep in episodes:
             self.feed_episode(ep)
@@ -280,8 +135,9 @@ class Trainer:
         #v = ep[-1][turn_idx]
         return state.feature(), ep[2][turn_idx], [v]
 
-    def run(self, callback=None):
-        self.nets = Nets(self.env)
+    def run(self, algoset, callback=None):
+        nets, planner, instant_planner = algoset['nets'], algoset['planner'], algoset['instant_planner']
+        self.nets = nets(self.env)
         print(self.nets.inference(self.env.State()))
         dice_train = np.random.RandomState(123)
 
@@ -300,10 +156,10 @@ class Trainer:
             if callback is not None:
                 callback(self.env, current_nets, 'net')
                 if 'notime_planner' in dir(self):
-                    callback(self.env, self.notime_planner(current_nets), 'n+t')
+                    callback(self.env, instant_planner(current_nets), 'n+t')
 
             # episode generation
-            self.generation_starter(self.nets, g)
+            self.generation_starter(self.nets, planner, g)
             print('gen = ', dict(sorted(self.reward_distribution.items(), reverse=True)))
 
             if g > 0 and self.args['concurrent_train']:

@@ -19,7 +19,7 @@ default_args = {
     'meta_bandit': 'u', # u:UCB, t:Thompson
     'posterior': 'n', # n:count, 't':Thompson
     'meta_p_randomization': True,
-  
+
     # fitting neural nets
     'batch_size': 32,
     'num_epochs': 50,
@@ -27,7 +27,7 @@ default_args = {
 
     # episode generation
     'num_simulations': 100,
-    'net_cache_extention': 0, 
+    'net_cache_extention': 0,
     'temperature': 0.8,
     'temp_decay': 0.8,
 
@@ -68,15 +68,15 @@ if env.game == 'TicTacToe':
 
     s = env.State()
     s.plays('A1 C1 A2 C2')
-    planner.inference(s, 20000, show=True)
+    planner.inference(s, num_simulations=20000, show=True)
 
     s = env.State()
     s.plays('B2 A2 A3 C1 B3')
-    planner.inference(s, 20000, show=True)
+    planner.inference(s, num_simulations=20000, show=True)
 
     s = env.State()
     s.plays('B1 A3')
-    planner.inference(s, 10000, show=True)
+    planner.inference(s, num_simulations=10000, show=True)
 
 trainer = Trainer(env, args)
 nets = trainer.run(callback=evaluation)
