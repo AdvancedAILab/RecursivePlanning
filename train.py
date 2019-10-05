@@ -1,4 +1,5 @@
 import argparse
+from distutils.util import strtobool
 
 import gamegym as gym
 from match import RandomAgent, PerfectAgent, Agent, SoftAgent, Evaluator
@@ -36,8 +37,9 @@ default_args = {
 }
 
 parser = argparse.ArgumentParser()
+s2b = lambda x: bool(strtobool(x))
 for k, v in default_args.items():
-    t = None if v is None or isinstance(v, bool) else type(v)
+    t = None if v is None else s2b if isinstance(v, bool) else type(v)
     parser.add_argument('--' + k, default=v, type=t)
 
 args = vars(parser.parse_args())
